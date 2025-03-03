@@ -1,0 +1,17 @@
+{
+    "files": [],
+    "references": [
+        {
+            "path": "./tsconfig.node.json"
+        }
+    ],
+    "compilerOptions": {
+        "lib": ["DOM", "WebWorker"],
+        "paths": {
+            "@/*": [
+                "./src/*"
+            ]
+        }
+    },
+    "allowJS": true
+}

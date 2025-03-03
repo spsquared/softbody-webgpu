@@ -1,0 +1,116 @@
+<!DOCTYPE html>
+<html lang="en">
+
+<head>
+    <meta charset="UTF-8">
+    <meta http-equiv="X-UA-Compatible" content="IE=edge">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <!-- need to add domains later -->
+    <meta http-equiv="Content-Security-Policy" content="
+        default-src 'self';
+        script-src 'self' https://www.google.com;
+        script-src-elem 'self' https://www.google.com https://www.gstatic.com;
+        style-src 'self' 'unsafe-inline';
+        img-src 'self' https://raw.githubusercontent.com/spsquared/;
+        font-src 'self' data:;
+        frame-src 'self' https://www.google.com;
+        connect-src 'self' https://localhost:* wss://localhost:*;
+        ">
+    <meta name="title" content="WebGPU Softbody Sim">
+    <meta name="description" content="What could go wrong????">
+    <meta name="url" content="">
+    <meta name="image" content="">
+    <meta property="og:title" content="WebGPU Softbody Sim">
+    <meta property="og:description" content="What could go wrong????">
+    <meta property="og:url" content="">
+    <meta property="og:image" content="">
+    <meta property="og:image:width" content="256">
+    <meta property="og:image:height" content="256">
+    <title>WebGPU Softbody Sim</title>
+    <link rel="icon" href="/favicon.png" type="image/png">
+</head>
+
+<body>
+    <div id="canvasRoot"></div>
+    <div id="pageRoot"></div>
+    <div id="loadingCover">
+        <div id="loadingCoverBar"></div>
+        <noscript id="noscript">JavaScript was disabled!<br>Please enable it and <a href="" style="color: white">reload</a>!</noscript>
+        <div id="loadingErrorsContainer">
+            <div id="loadingError"></div>
+        </div>
+        <style>
+            a {
+                color: dodgerblue !important;
+            }
+
+            #loadingCover {
+                position: fixed;
+                top: 0px;
+                left: 0px;
+                width: 100vw;
+                height: 100vh;
+                text-align: center;
+                background-color: black;
+                color: white;
+                transition: 200ms linear opacity;
+                z-index: 1000;
+                cursor: wait;
+            }
+
+            #loadingCoverBar {
+                position: fixed;
+                top: calc(50vh - 0.5vw);
+                left: 35vw;
+                width: 30vw;
+                height: 1vw;
+                background: linear-gradient(dodgerblue 0 0), linear-gradient(dodgerblue 0 0), white;
+                background-size: 60% 100%;
+                background-repeat: no-repeat;
+                box-shadow: 0px 0px 0.5vw rgba(255, 255, 255, 0.5);
+                animation: pageLoadCoverProgress ease 2s infinite;
+            }
+
+            #noscript {
+                position: fixed;
+                top: 55vh;
+                left: 0vw;
+                width: 100vw;
+                text-align: center;
+            }
+
+            #loadingErrorsContainer {
+                position: fixed;
+                top: 55vh;
+                left: 0vw;
+                width: 100vw;
+                text-align: center;
+            }
+
+            #loadingError {
+                color: red;
+            }
+
+            @keyframes pageLoadCoverProgress {
+                0% {
+                    background-position: -150% 0, -150% 0;
+                }
+
+                66% {
+                    background-position: 250% 0, -150% 0;
+                }
+
+                100% {
+                    background-position: 250% 0, 250% 0;
+                }
+            }
+        </style>
+        <script src="/loadingCover.js"></script>
+    </div>
+    <div id="main">
+        <canvas id="canvas"></canvas>
+    </div>
+    <script type="module" src="/src/main.ts"></script>
+</body>
+
+</html>
