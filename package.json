@@ -22,7 +22,6 @@
         "@types/node": "^20.11.10",
         "@webgpu/types": "^0.1.55",
         "eslint": "^8.49.0",
-        "tsc": "^2.0.4",
         "typescript": "^5.8.2",
         "vite": "^6.2.0"
     }
