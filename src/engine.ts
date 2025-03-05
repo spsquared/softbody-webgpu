@@ -16,7 +16,7 @@ export class WGPUSoftbodyEngine {
         const offscreen = this.simCanvas.transferControlToOffscreen();
         offscreen.width = this.resolution;
         offscreen.height = this.resolution;
-        this.worker = new Worker(new URL('./engineworker', import.meta.url), { type: 'module' });
+        this.worker = new Worker(new URL('./engineWorker', import.meta.url), { type: 'module' });
         this.worker.postMessage(offscreen, [offscreen]);
         this.worker.addEventListener('error', (err) => { throw err.error; });
         this.startDraw();
