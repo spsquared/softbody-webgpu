@@ -8,6 +8,7 @@
     "compilerOptions": {
         "lib": ["DOM", "WebWorker"],
         "types": ["@webgpu/types"],
+        "typeRoots": ["./node_modules/@webgpu/types"],
         "paths": {
             "@/*": [
                 "./src/*"

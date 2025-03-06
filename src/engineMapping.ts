@@ -183,7 +183,7 @@ export class BufferMapper {
     readonly maxParticles: number;
 
     /**
-     * @param maxByteLength Maximum byte length of buffers
+     * @param maxByteLength Maximum byte length of buffers allowed
      */
     constructor(maxByteLength: number) {
         // either limited by uint16 index numbers (65536-1 for "empty" slots), size of mapping buffer, or size of particle/beam buffers

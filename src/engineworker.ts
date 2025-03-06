@@ -1,4 +1,8 @@
-import { BufferMapper } from './engineMapping';
+/// <reference types="@webgpu/types" />
+
+import { Beam, BufferMapper, Particle } from './engineMapping';
+
+type BindGroupPair = { readonly layout: GPUBindGroupLayout, readonly group: GPUBindGroup };
 
 class WGPUSoftbodyEngineWorker {
     private static sInstance: WGPUSoftbodyEngineWorker | null = null;
@@ -16,19 +20,25 @@ class WGPUSoftbodyEngineWorker {
     private readonly device: Promise<GPUDevice>;
     private readonly textureFormat: GPUTextureFormat;
 
-    private readonly modules: {
-        readonly compute: Promise<GPUShaderModule>
-        readonly render: Promise<GPUShaderModule>
-    };
+    private readonly modules: Promise<{
+        readonly compute: GPUShaderModule
+        readonly render: GPUShaderModule
+    }>;
 
     private readonly bufferMapper: Promise<BufferMapper>;
-    private readonly gpuBuffers: Promise<{
-        particles: GPUBuffer,
-        beams: GPUBuffer,
-        mapping: GPUBuffer
+    private readonly buffers: Promise<{
+        readonly particles: GPUBuffer,
+        readonly beams: GPUBuffer,
+        readonly mapping: GPUBuffer
     }>;
-    private readonly bindingGroups: Promise<{
-
+    private readonly bindGroups: Promise<{
+        readonly compute: BindGroupPair
+        readonly beamRender: BindGroupPair
+    }>;
+    private readonly pipelines: Promise<{
+        readonly compute: GPUComputePipeline,
+        readonly renderParticles: GPURenderPipeline
+        readonly renderBeams: GPURenderPipeline
     }>;
 
     private constructor(canvas: OffscreenCanvas) {
@@ -56,7 +66,20 @@ class WGPUSoftbodyEngineWorker {
             console.log(ad.limits)
             resolve(new BufferMapper(ad.limits.maxBufferSize));
         });
-        this.gpuBuffers = new Promise(async (resolve) => {
+        this.modules = new Promise(async (resolve) => {
+            const device = await this.device;
+            resolve({
+                compute: device.createShaderModule({
+                    label: 'Physics compute shader',
+                    code: await (await fetch('./particleCompute.wgsl')).text()
+                }),
+                render: device.createShaderModule({
+                    label: 'Particle render shader',
+                    code: await (await fetch('./particleRender.wgsl')).text()
+                })
+            });
+        });
+        this.buffers = new Promise(async (resolve) => {
             const device = await this.device;
             const mapper = await this.bufferMapper;
             resolve({
@@ -73,70 +96,210 @@ class WGPUSoftbodyEngineWorker {
                 mapping: device.createBuffer({
                     label: 'Mapping buffer',
                     size: mapper.mapping.byteLength,
-                    usage: GPUBufferUsage.STORAGE | GPUBufferUsage.COPY_SRC | GPUBufferUsage.COPY_DST
+                    usage: GPUBufferUsage.STORAGE | GPUBufferUsage.INDEX | GPUBufferUsage.COPY_SRC | GPUBufferUsage.COPY_DST
                 })
             });
         });
-        // set up pipeline after devices attained
-        this.modules = {
-            compute: this.device.then(async (device) => device.createShaderModule({
-                label: 'Physics compute shader',
-                code: await (await fetch('./particleCompute.wgsl')).text()
-            })),
-            render: this.device.then(async (device) => device.createShaderModule({
-                label: 'Particle render shader',
-                code: await (await fetch('./particleRender.wgsl')).text()
-            }))
-        };
-        this.compileShaders();
+        this.bindGroups = new Promise(async (resolve) => {
+            const device = await this.device;
+            const buffers = await this.buffers;
+            const computeBindGroupLayout = device.createBindGroupLayout({
+                entries: [
+                    {
+                        binding: 0,
+                        visibility: GPUShaderStage.COMPUTE,
+                        buffer: { type: 'storage' }
+                    },
+                    {
+                        binding: 1,
+                        visibility: GPUShaderStage.COMPUTE,
+                        buffer: { type: 'storage' }
+                    },
+                    {
+                        binding: 2,
+                        visibility: GPUShaderStage.COMPUTE,
+                        buffer: { type: 'read-only-storage' }
+                    }
+                ]
+            });
+            const beamRenderBindGroupLayout = device.createBindGroupLayout({
+                entries: [
+                    {
+                        binding: 0,
+                        visibility: GPUShaderStage.VERTEX,
+                        buffer: { type: 'read-only-storage' }
+                    }
+                ]
+            });
+            resolve({
+                compute: {
+                    layout: computeBindGroupLayout,
+                    group: device.createBindGroup({
+                        label: 'Compute bind group',
+                        layout: computeBindGroupLayout,
+                        entries: [
+                            {
+                                binding: 0,
+                                resource: {
+                                    label: 'Particle buffer binding',
+                                    buffer: buffers.particles
+                                }
+                            },
+                            {
+                                binding: 1,
+                                resource: {
+                                    label: 'Beam buffer binding',
+                                    buffer: buffers.beams
+                                }
+                            },
+                            {
+                                binding: 2,
+                                resource: {
+                                    label: 'Mapping buffer binding',
+                                    buffer: buffers.mapping
+                                }
+                            },
+                        ]
+                    })
+                },
+                beamRender: {
+                    layout: beamRenderBindGroupLayout,
+                    group: device.createBindGroup({
+                        label: 'Beam render bind group',
+                        layout: beamRenderBindGroupLayout,
+                        entries: [
+                            {
+                                binding: 0,
+                                resource: {
+                                    label: 'Particle buffer binding',
+                                    buffer: buffers.particles
+                                }
+                            }
+                        ]
+                    })
+                }
+            });
+        });
+        this.pipelines = new Promise(async (resolve) => {
+            const device = await this.device;
+            const modules = await this.modules;
+            const bindGroups = await this.bindGroups;
+            // unforunately we need two render pipelines as we need two index buffers
+            resolve({
+                compute: await device.createComputePipelineAsync({
+                    label: 'Compute pipeline',
+                    layout: device.createPipelineLayout({
+                        label: 'Compute pipeline layout',
+                        bindGroupLayouts: [bindGroups.compute.layout]
+                    }),
+                    compute: {
+                        module: modules.compute,
+                        entryPoint: 'compute_main',
+                        constants: {}
+                    }
+                }),
+                renderParticles: await device.createRenderPipelineAsync({
+                    label: 'Particle render pipeline',
+                    layout: device.createPipelineLayout({
+                        label: 'Particle render pipeline layout',
+                        bindGroupLayouts: []
+                    }),
+                    vertex: {
+                        module: modules.render,
+                        entryPoint: 'vertex_particle_main',
+                        constants: {},
+                        buffers: [
+                            {
+                                arrayStride: Particle.stride,
+                                attributes: [
+                                    {
+                                        shaderLocation: 0,
+                                        format: 'float32x2',
+                                        offset: 0
+                                    },
+                                ],
+                                stepMode: 'instance'
+                            }
+                        ]
+                    },
+                    fragment: {
+                        module: modules.render,
+                        entryPoint: 'fragment_particle_main',
+                        targets: [
+                            {
+                                format: this.textureFormat,
+                                // blending moment
+                            }
+                        ]
+                    },
+                    primitive: {
+                        topology: 'triangle-strip',
+                        stripIndexFormat: 'uint16'
+                    }
+                }),
+                renderBeams: await device.createRenderPipelineAsync({
+                    label: 'Particle render pipeline',
+                    layout: device.createPipelineLayout({
+                        label: 'Particle render pipeline layout',
+                        bindGroupLayouts: [bindGroups.beamRender.layout]
+                    }),
+                    vertex: {
+                        module: modules.render,
+                        entryPoint: 'vertex_beam_main',
+                        constants: {},
+                        buffers: [
+                            {
+                                arrayStride: Beam.stride,
+                                attributes: [
+                                    {
+                                        shaderLocation: 0,
+                                        format: 'uint16',
+                                        offset: 0
+                                    },
+                                    {
+                                        shaderLocation: 1,
+                                        format: 'uint16',
+                                        offset: 2
+                                    }
+                                ],
+                                stepMode: 'instance'
+                            }
+                        ]
+                    },
+                    fragment: {
+                        module: modules.render,
+                        entryPoint: 'fragment_beam_main',
+                        targets: [
+                            {
+                                format: this.textureFormat,
+                                // blending moment
+                            }
+                        ]
+                    },
+                    primitive: {
+                        topology: 'triangle-strip',
+                        stripIndexFormat: 'uint16'
+                    }
+                })
+            })
+        });
         self.addEventListener('message', (e) => {
 
         });
+        this.beginLoop();
     }
 
-    private async compileShaders(): Promise<void> {
-        const device = await this.device;
-        const buffers = await this.gpuBuffers;
-        const computeBindGroupLayout = device.createBindGroupLayout({
-            entries: [
-                {
-                    binding: 0,
-                    visibility: GPUShaderStage.COMPUTE,
-                    buffer: {
-                        type: 'storage'
-                    }
-                },
-                {
-                    binding: 1,
-                    visibility: GPUShaderStage.COMPUTE,
-                    buffer: {
-                        type: 'storage'
-                    }
-                },
-                {
-                    binding: 1,
-                    visibility: GPUShaderStage.COMPUTE,
-                    buffer: {
-                        type: 'read-only-storage'
-                    }
-                }
-            ]
-        });
-        const renderBindGroupLayout  = device.createBindGroupLayout({
-            entries: [
+    // rendering of particles will be done using billboards created through instancing
+    // rendering of beams done using lines and also through instancing
 
-            ]
-        });
-        // rendering of particles will be done using billboards created through instancing
-        // rendering of beams done using lines and also through instancing
+    // don't need bind groups if no storage buffers in render pipeline
 
-        // don't need bind groups if no storage buffers in render pipeline
+    // render pipelines can have multiple buffers but primitive types are different!! multiple pipelines!
 
-        // render pipelines can have multiple buffers but primitive types are different!! multiple pipelines!
+    // use mapping buffer as index buffer?
+    // having the "empty" value be 0xffff effectively makes the vertex shader never create primitives for those
 
-        // use mapping buffer as index buffer?
-        // having the "empty" value be 0xffff effectively makes the vertex shader never create primitives for those
-    }
+    // don't need index buffer, just use instancing (and if particle doesn't exist delete it)
 
     private frame(): void {
     }
