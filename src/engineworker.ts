@@ -2,6 +2,9 @@
 
 import { Beam, BufferMapper, Particle } from './engineMapping';
 
+import computeShader from './shaders/compute.wgsl?raw';
+import renderShader from './shaders/render.wgsl?raw';
+
 type BindGroupPair = { readonly layout: GPUBindGroupLayout, readonly group: GPUBindGroup };
 
 class WGPUSoftbodyEngineWorker {
@@ -84,11 +87,11 @@ class WGPUSoftbodyEngineWorker {
             resolve({
                 compute: device.createShaderModule({
                     label: 'Physics compute shader',
-                    code: await (await fetch('/particleCompute.wgsl')).text()
+                    code: computeShader
                 }),
                 render: device.createShaderModule({
                     label: 'Particle render shader',
-                    code: await (await fetch('/particleRender.wgsl')).text()
+                    code: renderShader
                 })
             });
         });

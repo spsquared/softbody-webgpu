@@ -14,5 +14,8 @@ export default defineConfig({
     },
     server: {
         port: 5176
-    }
+    },
+    assetsInclude: [
+        '*.wgsl'
+    ]
 })
