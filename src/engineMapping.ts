@@ -191,7 +191,7 @@ export class BufferMapper {
         this.particleData = new ArrayBuffer(Particle.stride * this.maxParticles);
         this.beamData = new ArrayBuffer(Beam.stride * this.maxParticles);
         this.mapping = new Uint16Array(2 * this.maxParticles);
-        // index of 65535 means nothing
+        // index of 65535 means no entity mapped
         this.mapping.fill(0xffff);
     }
 

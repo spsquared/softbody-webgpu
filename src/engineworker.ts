@@ -1,4 +1,4 @@
-/// <reference types="@webgpu/types" />
+/// <reference types="@webgpu/types" />                                                                                                                                                        
 
 import { Beam, BufferMapper, Particle } from './engineMapping';
 
@@ -20,6 +20,9 @@ class WGPUSoftbodyEngineWorker {
     private readonly device: Promise<GPUDevice>;
     private readonly textureFormat: GPUTextureFormat;
 
+    private readonly gridSize: number = 1000;
+    private readonly particleRadius: number = 100;
+
     private readonly modules: Promise<{
         readonly compute: GPUShaderModule
         readonly render: GPUShaderModule
@@ -33,13 +36,14 @@ class WGPUSoftbodyEngineWorker {
     }>;
     private readonly bindGroups: Promise<{
         readonly compute: BindGroupPair
-        readonly beamRender: BindGroupPair
+        readonly render: BindGroupPair
     }>;
     private readonly pipelines: Promise<{
         readonly compute: GPUComputePipeline,
         readonly renderParticles: GPURenderPipeline
         readonly renderBeams: GPURenderPipeline
     }>;
+    private renderBundles: [GPURenderBundle, GPURenderBundle] | undefined = undefined;
 
     private constructor(canvas: OffscreenCanvas) {
         this.canvas = canvas;
@@ -52,18 +56,27 @@ class WGPUSoftbodyEngineWorker {
         this.device = new Promise<GPUDevice>(async (resolve) => {
             const ad = await adapter;
             if (ad === null) throw new TypeError('GPU adapter not available');
-            const gpu = await ad.requestDevice();
+            console.log('Adapter max limits', ad.limits);
+            const gpu = await ad.requestDevice({
+                requiredLimits: {
+                    maxComputeInvocationsPerWorkgroup: ad.limits.maxComputeInvocationsPerWorkgroup,
+                    maxComputeWorkgroupSizeX: ad.limits.maxComputeWorkgroupSizeX,
+                    maxComputeWorkgroupSizeY: ad.limits.maxComputeWorkgroupSizeY,
+                    maxBufferSize: ad.limits.maxBufferSize,
+                    maxStorageBufferBindingSize: ad.limits.maxStorageBufferBindingSize
+                }
+            });
             this.ctx.configure({
                 device: gpu,
                 format: this.textureFormat
             });
+            console.log('GPU limits', gpu.limits);
             resolve(gpu);
         });
         // create buffers
         this.bufferMapper = new Promise<BufferMapper>(async (resolve) => {
             const ad = await adapter;
             if (ad === null) throw new TypeError('GPU adapter not available');
-            console.log(ad.limits)
             resolve(new BufferMapper(ad.limits.maxBufferSize));
         });
         this.modules = new Promise(async (resolve) => {
@@ -71,11 +84,11 @@ class WGPUSoftbodyEngineWorker {
             resolve({
                 compute: device.createShaderModule({
                     label: 'Physics compute shader',
-                    code: await (await fetch('./particleCompute.wgsl')).text()
+                    code: await (await fetch('/particleCompute.wgsl')).text()
                 }),
                 render: device.createShaderModule({
                     label: 'Particle render shader',
-                    code: await (await fetch('./particleRender.wgsl')).text()
+                    code: await (await fetch('/particleRender.wgsl')).text()
                 })
             });
         });
@@ -122,10 +135,10 @@ class WGPUSoftbodyEngineWorker {
                     }
                 ]
             });
-            const beamRenderBindGroupLayout = device.createBindGroupLayout({
+            const renderBindGroupLayout = device.createBindGroupLayout({
                 entries: [
                     {
-                        binding: 0,
+                        binding: 1,
                         visibility: GPUShaderStage.VERTEX,
                         buffer: { type: 'read-only-storage' }
                     }
@@ -162,16 +175,16 @@ class WGPUSoftbodyEngineWorker {
                         ]
                     })
                 },
-                beamRender: {
-                    layout: beamRenderBindGroupLayout,
+                render: {
+                    layout: renderBindGroupLayout,
                     group: device.createBindGroup({
-                        label: 'Beam render bind group',
-                        layout: beamRenderBindGroupLayout,
+                        label: 'Render bind group',
+                        layout: renderBindGroupLayout,
                         entries: [
                             {
-                                binding: 0,
+                                binding: 1,
                                 resource: {
-                                    label: 'Particle buffer binding',
+                                    label: 'Beam buffer binding',
                                     buffer: buffers.particles
                                 }
                             }
@@ -195,19 +208,27 @@ class WGPUSoftbodyEngineWorker {
                     compute: {
                         module: modules.compute,
                         entryPoint: 'compute_main',
-                        constants: {}
+                        constants: {
+                            workgroup_size_x: device.limits.maxComputeWorkgroupSizeX,
+                            workgroup_size_y: Math.min(Math.floor(device.limits.maxComputeInvocationsPerWorkgroup / device.limits.maxComputeWorkgroupSizeX), device.limits.maxComputeWorkgroupSizeY),
+                            grid_size: this.gridSize,
+                            particle_radius: this.particleRadius
+                        }
                     }
                 }),
                 renderParticles: await device.createRenderPipelineAsync({
                     label: 'Particle render pipeline',
                     layout: device.createPipelineLayout({
                         label: 'Particle render pipeline layout',
-                        bindGroupLayouts: []
+                        bindGroupLayouts: [bindGroups.render.layout]
                     }),
                     vertex: {
                         module: modules.render,
                         entryPoint: 'vertex_particle_main',
-                        constants: {},
+                        constants: {
+                            grid_size: this.gridSize,
+                            particle_radius: this.particleRadius
+                        },
                         buffers: [
                             {
                                 arrayStride: Particle.stride,
@@ -225,6 +246,9 @@ class WGPUSoftbodyEngineWorker {
                     fragment: {
                         module: modules.render,
                         entryPoint: 'fragment_particle_main',
+                        constants: {
+                            particle_radius: this.particleRadius
+                        },
                         targets: [
                             {
                                 format: this.textureFormat,
@@ -238,28 +262,25 @@ class WGPUSoftbodyEngineWorker {
                     }
                 }),
                 renderBeams: await device.createRenderPipelineAsync({
-                    label: 'Particle render pipeline',
+                    label: 'Beam render pipeline',
                     layout: device.createPipelineLayout({
-                        label: 'Particle render pipeline layout',
-                        bindGroupLayouts: [bindGroups.beamRender.layout]
+                        label: 'Beam render pipeline layout',
+                        bindGroupLayouts: [bindGroups.render.layout]
                     }),
                     vertex: {
                         module: modules.render,
                         entryPoint: 'vertex_beam_main',
-                        constants: {},
+                        constants: {
+                            grid_size: this.gridSize,
+                        },
                         buffers: [
                             {
                                 arrayStride: Beam.stride,
                                 attributes: [
                                     {
                                         shaderLocation: 0,
-                                        format: 'uint16',
+                                        format: 'uint16x2',
                                         offset: 0
-                                    },
-                                    {
-                                        shaderLocation: 1,
-                                        format: 'uint16',
-                                        offset: 2
                                     }
                                 ],
                                 stepMode: 'instance'
@@ -269,6 +290,7 @@ class WGPUSoftbodyEngineWorker {
                     fragment: {
                         module: modules.render,
                         entryPoint: 'fragment_beam_main',
+                        constants: {},
                         targets: [
                             {
                                 format: this.textureFormat,
@@ -281,33 +303,76 @@ class WGPUSoftbodyEngineWorker {
                         stripIndexFormat: 'uint16'
                     }
                 })
-            })
+            });
         });
         self.addEventListener('message', (e) => {
 
         });
-        this.beginLoop();
+        this.buildRenderBundles();
+        this.beginDraw();
     }
 
-    // rendering of particles will be done using billboards created through instancing
-    // rendering of beams done using lines and also through instancing
-
-    // don't need bind groups if no storage buffers in render pipeline
-
-    // render pipelines can have multiple buffers but primitive types are different!! multiple pipelines!
-
-    // use mapping buffer as index buffer?
-    // having the "empty" value be 0xffff effectively makes the vertex shader never create primitives for those
-
-    // don't need index buffer, just use instancing (and if particle doesn't exist delete it)
-
-    private frame(): void {
+    private async buildRenderBundles(): Promise<void> {
+        const device = await this.device;
+        const bufferMapper = await this.bufferMapper;
+        const buffers = await this.buffers;
+        const bindGroups = await this.bindGroups;
+        const pipelines = await this.pipelines;
+        const particleEncoder = device.createRenderBundleEncoder({
+            label: 'Particle render bundle',
+            colorFormats: [this.textureFormat]
+        });
+        particleEncoder.setPipeline(pipelines.renderBeams);
+        particleEncoder.setVertexBuffer(0, buffers.particles);
+        particleEncoder.setBindGroup(0, bindGroups.render.group);
+        particleEncoder.draw(4, bufferMapper.maxParticles);
+        const particleBundle = particleEncoder.finish();
+        const beamEncoder = device.createRenderBundleEncoder({
+            label: 'Beam render bundle',
+            colorFormats: [this.textureFormat]
+        });
+        beamEncoder.setPipeline(pipelines.renderBeams);
+        beamEncoder.setVertexBuffer(0, buffers.particles);
+        beamEncoder.setBindGroup(0, bindGroups.render.group);
+        beamEncoder.draw(4, bufferMapper.maxParticles);
+        const beamBundle = beamEncoder.finish();
+        this.renderBundles = [particleBundle, beamBundle];
     }
 
-    private async beginLoop(): Promise<void> {
+    private async frame(): Promise<void> {
+        if (this.renderBundles === undefined) return;
+        const device = await this.device;
+        const buffers = await this.buffers;
+        const bindGroups = await this.bindGroups;
+        const pipelines = await this.pipelines;
+        const encoder = device.createCommandEncoder();
+        const computePass = encoder.beginComputePass({
+            label: 'Engine compute pass'
+        });
+        computePass.setPipeline(pipelines.compute);
+        computePass.setBindGroup(0, bindGroups.compute.group);
+        computePass.dispatchWorkgroups(1, 1, 1);
+        computePass.end();
+        const renderPass = encoder.beginRenderPass({
+            colorAttachments: [{
+                view: this.ctx.getCurrentTexture().createView(),
+                loadOp: 'clear',
+                storeOp: 'store',
+                clearValue: { r: 0, g: 0, b: 0, a: 0 }
+            }]
+        });
+        renderPass.executeBundles(this.renderBundles);
+        renderPass.end();
+        device.queue.submit([encoder.finish()]);
+    }
+
+    private async beginDraw(): Promise<void> {
         while (true) {
             await new Promise<void>((resolve) => {
-                requestAnimationFrame(() => this.frame());
+                requestAnimationFrame(async () => {
+                    await this.frame();
+                    resolve();
+                });
             });
         }
     }
