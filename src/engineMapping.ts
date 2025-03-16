@@ -7,8 +7,8 @@ type TypedArray = Uint8Array | Int8Array | Uint16Array | Int16Array | Uint32Arra
  * Defines buffer structs for placing vectors into GPU buffers.
  */
 export class Vector2D {
-    readonly x: number;
-    readonly y: number;
+    x: number;
+    y: number;
 
     constructor(x: number, y: number) {
         this.x = x;
@@ -42,13 +42,13 @@ export class Particle {
     static readonly stride = 24;
 
     readonly id: number;
-    readonly position: Vector2D;
-    readonly velocity: Vector2D;
-    readonly acceleration: Vector2D;
+    position: Vector2D;
+    velocity: Vector2D;
+    acceleration: Vector2D;
 
-    constructor(id: number, position: Vector2D, velocity?: Vector2D, acceleration?: Vector2D) {
+    constructor(id: number, position?: Vector2D, velocity?: Vector2D, acceleration?: Vector2D) {
         this.id = id;
-        this.position = position;
+        this.position = position ?? Vector2D.zero;
         this.velocity = velocity ?? Vector2D.zero;
         this.acceleration = acceleration ?? Vector2D.zero;
     }
@@ -104,10 +104,10 @@ export class Beam {
     readonly id: number;
     readonly a: number | Particle;
     readonly b: number | Particle;
-    readonly length: number;
-    readonly lastDist: number;
-    readonly spring: number;
-    readonly damp: number;
+    length: number;
+    lastDist: number;
+    spring: number;
+    damp: number;
 
     constructor(id: number, a: number | Particle, b: number | Particle, length: number, spring: number, damp: number, lastDist?: number) {
         this.id = id;
@@ -169,16 +169,56 @@ export class Beam {
 }
 
 /**
+ * Defines buffer struct for engine metadata.
+ */
+export class Metadata {
+    /**
+     * Size of buffer needed to contain metadata in bytes.
+     * - Particle count - `uint16`
+     * - Beam count - `uint16`
+     */
+    static readonly byteLength = 4;
+
+    readonly buf: ArrayBuffer;
+    private readonly uint16View: Uint16Array;
+
+    constructor(buf: ArrayBuffer) {
+        this.buf = buf;
+        this.uint16View = new Uint16Array(this.buf);
+    }
+
+    get particleCount(): number {
+        return this.uint16View[0];
+    }
+    set particleCount(c: number) {
+        this.uint16View[0] = c;
+    }
+
+    get beamCount(): number {
+        return this.uint16View[1];
+    }
+    set beamCount(c: number) {
+        this.uint16View[1] = c;
+    }
+}
+
+/**
  * Defines buffer structs for locating particles and beams by ID in GPU buffers.
  * Mapping buffers can hold up to `N` particles and `N` beams in `uint16` format,
  * with each index holding the location of the data in the respective buffer,
- * effectively acting as an index buffer. An index of 65535 means there is no
- * particle/beam. The particles and beams sections are contiguous.
+ * effectively acting as an index buffer.
+ * 
+ * particle/beam sections are contiguous
+ * 
+ * add new buffer for data like cursor, camera, particle/beam count?
  */
 export class BufferMapper {
+    readonly metadata: ArrayBuffer;
     readonly particleData: ArrayBuffer;
     readonly beamData: ArrayBuffer;
     readonly mapping: Uint16Array;
+
+    readonly meta: Metadata;
 
     readonly maxParticles: number;
 
@@ -186,17 +226,29 @@ export class BufferMapper {
      * @param maxByteLength Maximum byte length of buffers allowed
      */
     constructor(maxByteLength: number) {
-        // either limited by uint16 index numbers (65536-1 for "empty" slots), size of mapping buffer, or size of particle/beam buffers
-        this.maxParticles = Math.min(65535, maxByteLength / Uint16Array.BYTES_PER_ELEMENT / 2, Math.floor(maxByteLength / Math.max(Particle.stride, Beam.stride)));
+        // either limited by uint16 index numbers, size of mapping buffer, or size of particle/beam buffers
+        this.maxParticles = Math.min(65536, maxByteLength / Uint16Array.BYTES_PER_ELEMENT / 2, Math.floor(maxByteLength / Math.max(Particle.stride, Beam.stride)));
+        this.metadata = new ArrayBuffer(Metadata.byteLength);
         this.particleData = new ArrayBuffer(Particle.stride * this.maxParticles);
         this.beamData = new ArrayBuffer(Beam.stride * this.maxParticles);
         this.mapping = new Uint16Array(2 * this.maxParticles);
-        // index of 65535 means no entity mapped
-        this.mapping.fill(0xffff);
+        this.meta = new Metadata(this.metadata);
     }
 
-    // create another buffer for sending data like mouse info to make creating/linking particles faster
-    // when creating, fill first available location, and add to end of mapping buffer section
-    // when deleting, make mapping buffer point to last location in the mapping buffer, effectively changing the last particle's ID
-    // this preserves locations in the data buffers, which beams use, while keeping mapping contiguous
+    addParticle(p: Particle): boolean {
+        if (this.meta.particleCount == this.maxParticles) return false;
+        p.to(this.particleData, this.mapping, this.meta.particleCount++);
+        return true;
+    }
+
+    addBeam(b: Beam): boolean {
+        if (this.meta.beamCount == this.maxParticles) return false;
+        b.to(this.beamData, this.mapping, this.meta.beamCount++, this.maxParticles);
+        return true;
+    }
+
+    removeParticle(p: Particle): boolean {
+        const meta = Metadata.from(this.metadata);
+
+    }
 }

@@ -2,9 +2,6 @@
 
 import { Beam, BufferMapper, Particle } from './engineMapping';
 
-import computeShader from './shaders/compute.wgsl?raw';
-import renderShader from './shaders/render.wgsl?raw';
-
 type BindGroupPair = { readonly layout: GPUBindGroupLayout, readonly group: GPUBindGroup };
 
 class WGPUSoftbodyEngineWorker {
@@ -46,7 +43,9 @@ class WGPUSoftbodyEngineWorker {
         readonly renderParticles: GPURenderPipeline
         readonly renderBeams: GPURenderPipeline
     }>;
-    private renderBundles: [GPURenderBundle, GPURenderBundle] | undefined = undefined;
+
+    private readonly frameTimes: number[] = [];
+    private readonly fpsHistory: number[] = [];
 
     private constructor(canvas: OffscreenCanvas) {
         this.canvas = canvas;
@@ -87,11 +86,11 @@ class WGPUSoftbodyEngineWorker {
             resolve({
                 compute: device.createShaderModule({
                     label: 'Physics compute shader',
-                    code: computeShader
+                    code: await (await fetch(new URL('./shaders/compute.wgsl', import.meta.url))).text()
                 }),
                 render: device.createShaderModule({
                     label: 'Particle render shader',
-                    code: renderShader
+                    code: await (await fetch(new URL('./shaders/render.wgsl', import.meta.url))).text()
                 })
             });
         });
@@ -212,8 +211,6 @@ class WGPUSoftbodyEngineWorker {
                         module: modules.compute,
                         entryPoint: 'compute_main',
                         constants: {
-                            workgroup_size_x: device.limits.maxComputeWorkgroupSizeX,
-                            workgroup_size_y: Math.min(Math.floor(device.limits.maxComputeInvocationsPerWorkgroup / device.limits.maxComputeWorkgroupSizeX), device.limits.maxComputeWorkgroupSizeY),
                             grid_size: this.gridSize,
                             particle_radius: this.particleRadius
                         }
@@ -302,7 +299,7 @@ class WGPUSoftbodyEngineWorker {
                         ]
                     },
                     primitive: {
-                        topology: 'triangle-strip',
+                        topology: 'line-strip',
                         stripIndexFormat: 'uint16'
                     }
                 })
@@ -311,41 +308,13 @@ class WGPUSoftbodyEngineWorker {
         self.addEventListener('message', (e) => {
 
         });
-        this.buildRenderBundles();
         this.beginDraw();
     }
 
-    private async buildRenderBundles(): Promise<void> {
-        const device = await this.device;
-        const bufferMapper = await this.bufferMapper;
-        const buffers = await this.buffers;
-        const bindGroups = await this.bindGroups;
-        const pipelines = await this.pipelines;
-        const particleEncoder = device.createRenderBundleEncoder({
-            label: 'Particle render bundle',
-            colorFormats: [this.textureFormat]
-        });
-        particleEncoder.setPipeline(pipelines.renderBeams);
-        particleEncoder.setVertexBuffer(0, buffers.particles);
-        particleEncoder.setBindGroup(0, bindGroups.render.group);
-        particleEncoder.draw(4, bufferMapper.maxParticles);
-        const particleBundle = particleEncoder.finish();
-        const beamEncoder = device.createRenderBundleEncoder({
-            label: 'Beam render bundle',
-            colorFormats: [this.textureFormat]
-        });
-        beamEncoder.setPipeline(pipelines.renderBeams);
-        beamEncoder.setVertexBuffer(0, buffers.particles);
-        beamEncoder.setBindGroup(0, bindGroups.render.group);
-        beamEncoder.draw(4, bufferMapper.maxParticles);
-        const beamBundle = beamEncoder.finish();
-        this.renderBundles = [particleBundle, beamBundle];
-    }
-
     private async frame(): Promise<void> {
-        if (this.renderBundles === undefined) return;
         const device = await this.device;
         const buffers = await this.buffers;
+        const bufferMapper = await this.bufferMapper;
         const bindGroups = await this.bindGroups;
         const pipelines = await this.pipelines;
         const encoder = device.createCommandEncoder();
@@ -354,9 +323,10 @@ class WGPUSoftbodyEngineWorker {
         });
         computePass.setPipeline(pipelines.compute);
         computePass.setBindGroup(0, bindGroups.compute.group);
-        computePass.dispatchWorkgroups(1, 1, 1);
+        computePass.dispatchWorkgroups(Math.ceil(bufferMapper.maxParticles / 64), 1, 1);
         computePass.end();
         const renderPass = encoder.beginRenderPass({
+            label: 'Render pass',
             colorAttachments: [{
                 view: this.ctx.getCurrentTexture().createView(),
                 loadOp: 'clear',
@@ -364,9 +334,26 @@ class WGPUSoftbodyEngineWorker {
                 clearValue: { r: 0, g: 0, b: 0, a: 0 }
             }]
         });
-        renderPass.executeBundles(this.renderBundles);
+        renderPass.setPipeline(pipelines.renderBeams);
+        renderPass.setVertexBuffer(0, buffers.particles);
+        renderPass.setBindGroup(0, bindGroups.render.group);
+        renderPass.setIndexBuffer(buffers.mapping, 'uint16', 0, bufferMapper.maxParticles);
+        renderPass.draw(3, bufferMapper.meta.particleCount);
+        renderPass.setPipeline(pipelines.renderBeams);
+        renderPass.setVertexBuffer(0, buffers.particles);
+        renderPass.setBindGroup(0, bindGroups.render.group);
+        renderPass.setIndexBuffer(buffers.mapping, 'uint16', bufferMapper.maxParticles, bufferMapper.maxParticles);
+        renderPass.draw(2, bufferMapper.meta.beamCount);
         renderPass.end();
         device.queue.submit([encoder.finish()]);
+        const now = performance.now();
+        this.frameTimes.push(now);
+        while (this.frameTimes[0] + 1000 < now) this.frameTimes.shift();
+        this.fpsHistory.push(this.frameTimes.length);
+    }
+
+    get currentFps(): number {
+        return this.frameTimes.length;
     }
 
     private async beginDraw(): Promise<void> {

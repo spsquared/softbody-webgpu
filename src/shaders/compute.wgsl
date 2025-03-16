@@ -1,5 +1,3 @@
-override workgroup_size_x: u32;
-override workgroup_size_y: u32;
 override grid_size: u32;
 override particle_radius: f32;
 
@@ -14,14 +12,11 @@ struct Particle {
     a: vec2<f32>
 }
 
-@group(0) @binding(0)
-var<storage, read_write> particles: array<Particle>;
-@group(0) @binding(1)
-var<storage, read_write> beams: array<f32>;
-@group(0) @binding(2)
-var<storage, read> mappings: array<u32>;
+@group(0) @binding(0) var<storage, read_write> particles: array<Particle>;
+@group(0) @binding(1) var<storage, read_write> beams: array<f32>;
+@group(0) @binding(2) var<storage, read> mappings: array<u32>;
 
-@compute @workgroup_size(workgroup_size_x, workgroup_size_y, 1)
+@compute @workgroup_size(64, 1, 1)
 fn compute_main(thread: ComputeParams) {
     // Compute threads are striated across all particles - distributes particle compute load evenly
     // e.g. 10 particles, 4 threads would have thread mapping 0,1,2,3,0,1,2,3,0,1
