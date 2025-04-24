@@ -23,21 +23,21 @@ struct ParticleVertexIn {
 
 struct ParticleVertexOut {
     @builtin(position) clip_position: vec4<f32>,
-    @location(0) uv: vec2<f32>
+    @location(0) n: f32
 }
 
 @vertex
 fn vertex_particle_main(vertex: ParticleVertexIn) -> ParticleVertexOut {
     var out: ParticleVertexOut;
     out.clip_position = to_clip_space(vertex.position + billboard_points[vertex.vertex_index] * particle_radius);
-    out.uv = vec2<f32>((2.0 - f32(vertex.vertex_index)), f32(vertex.vertex_index));
+    out.n = f32(vertex.vertex_index);
     return out;
 }
 
 @fragment
 fn fragment_particle_main(frag: ParticleVertexOut) -> @location(0) vec4<f32> {
     let thing = particle_radius;
-    return vec4<f32>(frag.uv, 0.0, 1.0);
+    return vec4<f32>(1.0 - frag.n, 1.0 - abs(1 - frag.n), frag.n - 1.0, 1.0);
     // return vec4<f32>(1.0, 1.0, 1.0, 1.0);
 }
 

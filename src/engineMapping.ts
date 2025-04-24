@@ -198,36 +198,46 @@ export class Beam {
 }
 
 /**
- * Defines buffer struct for engine metadata.
+ * Defines buffer struct for engine metadata. Metadata buffer is also used as indirect buffer for render passes.
  */
 export class Metadata {
     /**
      * Size of buffer needed to contain metadata in bytes.
-     * - Particle count - `uint16`
-     * - Beam count - `uint16`
+     * - Particle vertex count - `uint32`
+     * - Particle instance count - `uint32`
+     * - Particle first vertex - `uint32`
+     * - Particle base vertex - `uint32`
+     * - Particle first instance - `uint32`
+     * - Beam vertex count - `uint32`
+     * - Beam instance count - `uint32`
+     * - Beam first vertex - `uint32`
+     * - Beam base vertex - `uint32`
+     * - Beam first instance - `uint32`
      */
-    static readonly byteLength = 4;
+    static readonly byteLength = 40;
 
     readonly buf: ArrayBuffer;
-    private readonly uint16View: Uint16Array;
+    private readonly uint32View: Uint32Array;
 
     constructor(buf: ArrayBuffer) {
         this.buf = buf;
-        this.uint16View = new Uint16Array(this.buf);
+        this.uint32View = new Uint32Array(this.buf);
+        this.uint32View[0] = 3;
+        this.uint32View[5] = 2;
     }
 
     get particleCount(): number {
-        return this.uint16View[0];
+        return this.uint32View[1];
     }
     set particleCount(c: number) {
-        this.uint16View[0] = c;
+        this.uint32View[1] = c;
     }
 
     get beamCount(): number {
-        return this.uint16View[1];
+        return this.uint32View[6];
     }
     set beamCount(c: number) {
-        this.uint16View[1] = c;
+        this.uint32View[6] = c;
     }
 }
 
@@ -242,6 +252,7 @@ export class Metadata {
  * 
  * add cursor, camera, to metadata
  * 
+ * Metadata buffer is also used as indirect buffer drawing
  * Metadata holds number of particles/beams
  * Mapping buffer is contiguous for the number of particles/beams
  * Particles/beams never move within the data buffers, to make beam computations faster

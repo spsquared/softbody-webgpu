@@ -30,16 +30,17 @@ class WGPUSoftbodyEngineWorker {
 
     private readonly bufferMapper: Promise<BufferMapper>;
     private readonly buffers: Promise<{
-        readonly particles: GPUBuffer,
-        readonly beams: GPUBuffer,
+        readonly particles: GPUBuffer
+        readonly beams: GPUBuffer
         readonly mapping: GPUBuffer
+        readonly metadata: GPUBuffer
     }>;
     private readonly bindGroups: Promise<{
         readonly compute: BindGroupPair
         readonly render: BindGroupPair
     }>;
     private readonly pipelines: Promise<{
-        readonly compute: GPUComputePipeline,
+        readonly compute: GPUComputePipeline
         readonly renderParticles: GPURenderPipeline
         readonly renderBeams: GPURenderPipeline
     }>;
@@ -112,6 +113,11 @@ class WGPUSoftbodyEngineWorker {
                     label: 'Mapping buffer',
                     size: mapper.mapping.byteLength,
                     usage: GPUBufferUsage.STORAGE | GPUBufferUsage.INDEX | GPUBufferUsage.COPY_SRC | GPUBufferUsage.COPY_DST
+                }),
+                metadata: device.createBuffer({
+                    label: 'Metadata buffer',
+                    size: mapper.metadata.byteLength,
+                    usage: GPUBufferUsage.UNIFORM | GPUBufferUsage.INDIRECT | GPUBufferUsage.COPY_SRC | GPUBufferUsage.COPY_DST
                 })
             });
         });
@@ -134,6 +140,11 @@ class WGPUSoftbodyEngineWorker {
                         binding: 2,
                         visibility: GPUShaderStage.COMPUTE,
                         buffer: { type: 'read-only-storage' }
+                    },
+                    {
+                        binding: 3,
+                        visibility: GPUShaderStage.COMPUTE,
+                        buffer: { type: 'uniform' }
                     }
                 ]
             });
@@ -174,6 +185,13 @@ class WGPUSoftbodyEngineWorker {
                                     buffer: buffers.mapping
                                 }
                             },
+                            {
+                                binding: 3,
+                                resource: {
+                                    label: 'Metadata buffer binding',
+                                    buffer: buffers.metadata
+                                }
+                            }
                         ]
                     })
                 },
@@ -338,12 +356,14 @@ class WGPUSoftbodyEngineWorker {
         renderPass.setVertexBuffer(0, buffers.particles);
         renderPass.setBindGroup(0, bindGroups.render.group);
         renderPass.setIndexBuffer(buffers.mapping, 'uint16', 0, bufferMapper.maxParticles);
-        renderPass.draw(3, bufferMapper.meta.particleCount);
+        // renderPass.drawIndexedIndirect(buffers.metadata, 0);
+        renderPass.drawIndirect(buffers.metadata, 0);
         renderPass.setPipeline(pipelines.renderBeams);
         renderPass.setVertexBuffer(0, buffers.particles);
         renderPass.setBindGroup(0, bindGroups.render.group);
         renderPass.setIndexBuffer(buffers.mapping, 'uint16', bufferMapper.maxParticles, bufferMapper.maxParticles);
-        renderPass.draw(2, bufferMapper.meta.beamCount);
+        // renderPass.drawIndexedIndirect(buffers.metadata, 20);
+        renderPass.drawIndirect(buffers.metadata, 20);
         renderPass.end();
         device.queue.submit([encoder.finish()]);
         const now = performance.now();
@@ -358,14 +378,25 @@ class WGPUSoftbodyEngineWorker {
 
     private async beginDraw(): Promise<void> {
         // TESTING CODE
-        const a = await this.bufferMapper;
-        a.load();
-        a.addParticle(new Particle(0, new Vector2D(10, 10), new Vector2D(1, 1)))
-        a.addParticle(new Particle(1, new Vector2D(10, 10), new Vector2D(1, 1)))
-        // a.addParticle(new Particle(2, new Vector2D(10, 10), new Vector2D(1, 1)))
-        // a.addParticle(new Particle(3, new Vector2D(10, 10), new Vector2D(1, 1)))
-        a.addBeam(new Beam(0, 0, 1, 100, 1, 1))
-        a.save();
+        // TESTING CODE
+        // TESTING CODE
+        const bufferMapper = await this.bufferMapper;
+        bufferMapper.load();
+        bufferMapper.addParticle(new Particle(0, new Vector2D(500, 500), new Vector2D(1, 1)))
+        bufferMapper.addParticle(new Particle(1, new Vector2D(-500, -500), new Vector2D(1, 1)))
+        // bufferMapper.addParticle(new Particle(2, new Vector2D(10, 10), new Vector2D(1, 1)))
+        // bufferMapper.addParticle(new Particle(3, new Vector2D(10, 10), new Vector2D(1, 1)))
+        bufferMapper.addBeam(new Beam(0, 0, 1, 100, 1, 1))
+        bufferMapper.save();
+        const device = await this.device;
+        const buffers = await this.buffers;
+        device.queue.writeBuffer(buffers.metadata, 0, bufferMapper.metadata, 0);
+        device.queue.writeBuffer(buffers.mapping, 0, bufferMapper.mapping, 0);
+        device.queue.writeBuffer(buffers.particles, 0, bufferMapper.particleData, 0);
+        device.queue.writeBuffer(buffers.beams, 0, bufferMapper.beamData, 0);
+        // STILL TESTING CODE
+        // STILL TESTING CODE
+        // STILL TESTING CODE
         while (true) {
             await new Promise<void>((resolve) => {
                 requestAnimationFrame(async () => {
