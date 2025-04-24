@@ -15,6 +15,7 @@ struct Particle {
 @group(0) @binding(0) var<storage, read_write> particles: array<Particle>;
 @group(0) @binding(1) var<storage, read_write> beams: array<f32>;
 @group(0) @binding(2) var<storage, read> mappings: array<u32>;
+@group(0) @binding(2) var<storage, read> metadata: array<u32>;
 
 @compute @workgroup_size(64, 1, 1)
 fn compute_main(thread: ComputeParams) {
@@ -24,6 +25,8 @@ fn compute_main(thread: ComputeParams) {
     // oh wait just use thread sync locks, create storage array (not bound) for storing what was updated
     // then after running updates using mapping buffer, run another test on particle buffer to "delete" un-updated parts
     // using the same ordering system
+
+    // VERLET INTEGRATION VERLET INTEGRATION
     let thing = grid_size;
     let other_thing = particle_radius;
 }

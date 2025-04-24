@@ -7,12 +7,46 @@ type TypedArray = Uint8Array | Int8Array | Uint16Array | Int16Array | Uint32Arra
  * Defines buffer structs for placing vectors into GPU buffers.
  */
 export class Vector2D {
-    x: number;
-    y: number;
+    readonly x: number;
+    readonly y: number;
+    readonly magnitude: number;
 
     constructor(x: number, y: number) {
         this.x = x;
         this.y = y;
+        this.magnitude = Math.sqrt(this.x ** 2 + this.y ** 2);
+    }
+
+    translate(x: number, y: number): Vector2D {
+        return new Vector2D(this.x + x, this.y + y);
+    }
+
+    mult(s: number): Vector2D {
+        return new Vector2D(this.x * s, this.y * s);
+    }
+
+    norm(): Vector2D {
+        return this.mult(1 / this.magnitude);
+    }
+
+    negate(): Vector2D {
+        return new Vector2D(-this.x, -this.y);
+    }
+
+    add(o: Vector2D): Vector2D {
+        return new Vector2D(this.x + o.x, this.y + o.y);
+    }
+
+    sub(o: Vector2D): Vector2D {
+        return this.add(o.negate());
+    }
+
+    dot(o: Vector2D): number {
+        return this.x * o.x + this.y * o.y;
+    }
+
+    cross(o: Vector2D): number {
+        return this.x * o.y - this.y * o.x;
     }
 
     static readonly zero: Vector2D = new Vector2D(0, 0);
@@ -36,11 +70,12 @@ export class Particle {
     /**
      * Buffer stride in bytes.
      * - Position: `vec2<f32>`
-     * - Velocity: `vec2<f32>`
+     * - Last Position: `vec2<f32>`
      * - Acceleration: `vec2<f32>`
      */
     static readonly stride = 24;
 
+    // Verlet integration uses position and last position, so velocity gets converted
     readonly id: number;
     position: Vector2D;
     velocity: Vector2D;
@@ -63,10 +98,9 @@ export class Particle {
      */
     to(pBuf: ArrayBuffer, mBuf: Uint16Array, index: number): void {
         mBuf[this.id] = index;
-        const len = Particle.stride / Float32Array.BYTES_PER_ELEMENT;
-        const f32View = new Float32Array(pBuf, index * len, len);
+        const f32View = new Float32Array(pBuf, index * Particle.stride, Particle.stride / Float32Array.BYTES_PER_ELEMENT);
         this.position.to(f32View, 0);
-        this.velocity.to(f32View, 2);
+        this.position.sub(this.velocity).to(f32View, 2);
         this.acceleration.to(f32View, 4);
     }
 
@@ -80,9 +114,8 @@ export class Particle {
      */
     static from(pBuf: ArrayBuffer, mBuf: Uint16Array, id: number): Particle {
         const index = mBuf[id];
-        const len = Particle.stride / Float32Array.BYTES_PER_ELEMENT;
-        const f32View = new Float32Array(pBuf, index * len, len);
-        return new Particle(id, Vector2D.from(f32View, 0), Vector2D.from(f32View, 2), Vector2D.from(f32View, 4));
+        const f32View = new Float32Array(pBuf, index * Particle.stride, Particle.stride / Float32Array.BYTES_PER_ELEMENT);
+        return new Particle(id, Vector2D.from(f32View, 0), Vector2D.from(f32View, 0).sub(Vector2D.from(f32View, 2)), Vector2D.from(f32View, 4));
     }
 }
 
@@ -133,10 +166,8 @@ export class Beam {
         // need to get index of particles in particle buffers first by their id
         const indexA = mBuf[typeof this.a == 'number' ? this.a : this.a.id];
         const indexB = mBuf[typeof this.b == 'number' ? this.b : this.b.id];
-        const lenUint16 = Beam.stride / Uint16Array.BYTES_PER_ELEMENT;
-        const lenF32 = Beam.stride / Float32Array.BYTES_PER_ELEMENT;
-        const uint16View = new Uint16Array(bBuf, index * lenUint16, lenUint16);
-        const f32View = new Float32Array(bBuf, index * lenF32, lenF32);
+        const uint16View = new Uint16Array(bBuf, index * Beam.stride, Beam.stride / Uint16Array.BYTES_PER_ELEMENT);
+        const f32View = new Float32Array(bBuf, index * Beam.stride, Beam.stride / Float32Array.BYTES_PER_ELEMENT);
         uint16View[0] = indexA;
         uint16View[1] = indexB;
         f32View[1] = this.length;
@@ -156,10 +187,8 @@ export class Beam {
      */
     static from(bBuf: ArrayBuffer, mBuf: Uint16Array, id: number, mBufOffset: number): Beam {
         const index = mBuf[mBufOffset + id];
-        const lenUint16 = Beam.stride / Uint16Array.BYTES_PER_ELEMENT;
-        const lenF32 = Beam.stride / Float32Array.BYTES_PER_ELEMENT;
-        const uint16View = new Uint16Array(bBuf, index * lenUint16, lenUint16);
-        const f32View = new Float32Array(bBuf, index * lenF32, lenF32);
+        const uint16View = new Uint16Array(bBuf, index * Beam.stride, Beam.stride / Uint16Array.BYTES_PER_ELEMENT);
+        const f32View = new Float32Array(bBuf, index * Beam.stride, Beam.stride / Float32Array.BYTES_PER_ELEMENT);
         // ensure beam counters & particles not checked
         const idA = mBuf.indexOf(uint16View[0], mBufOffset + 1);
         const idB = mBuf.indexOf(uint16View[1], mBufOffset + 1);
@@ -209,8 +238,14 @@ export class Metadata {
  * effectively acting as an index buffer.
  * 
  * particle/beam sections are contiguous
+ * particle/beam IDs are not guaranteed to stay the same
  * 
- * add new buffer for data like cursor, camera, particle/beam count?
+ * add cursor, camera, to metadata
+ * 
+ * Metadata holds number of particles/beams
+ * Mapping buffer is contiguous for the number of particles/beams
+ * Particles/beams never move within the data buffers, to make beam computations faster
+ * IDs of particles not guaranteed to stay the same
  */
 export class BufferMapper {
     readonly metadata: ArrayBuffer;
@@ -219,8 +254,10 @@ export class BufferMapper {
     readonly mapping: Uint16Array;
 
     readonly meta: Metadata;
-
     readonly maxParticles: number;
+
+    private readonly particles: Set<Particle> = new Set();
+    private readonly beams: Set<Beam> = new Set();
 
     /**
      * @param maxByteLength Maximum byte length of buffers allowed
@@ -235,20 +272,38 @@ export class BufferMapper {
         this.meta = new Metadata(this.metadata);
     }
 
-    addParticle(p: Particle): boolean {
-        if (this.meta.particleCount == this.maxParticles) return false;
-        p.to(this.particleData, this.mapping, this.meta.particleCount++);
-        return true;
+    // reading buffers will require a cpu readback to update buffers (very bad!!!)
+    // load() reads all the buffer data
+    // save() overwrites all the buffer data, and ignores ids
+
+    load(): void {
+        this.particles.clear();
+        this.beams.clear();
+        const pCount = this.meta.particleCount;
+        for (let i = 0; i < pCount; i++) this.particles.add(Particle.from(this.particleData, this.mapping, i));
+        const bCount = this.meta.beamCount;
+        for (let i = 0; i < bCount; i++) this.beams.add(Beam.from(this.beamData, this.mapping, i, this.maxParticles));
     }
 
-    addBeam(b: Beam): boolean {
-        if (this.meta.beamCount == this.maxParticles) return false;
-        b.to(this.beamData, this.mapping, this.meta.beamCount++, this.maxParticles);
-        return true;
+    save(): void {
+        this.meta.particleCount = this.particles.size;
+        this.meta.beamCount = this.beams.size;
+        const particles = [...this.particles.values()];
+        for (let i = 0; i < particles.length; i++) particles[i].to(this.particleData, this.mapping, i);
+        const beams = [...this.beams.values()];
+        for (let i = 0; i < beams.length; i++) beams[i].to(this.beamData, this.mapping, i, this.maxParticles);
     }
 
+    addParticle(p: Particle): void {
+        this.particles.add(p);
+    }
+    addBeam(b: Beam): void {
+        this.beams.add(b);
+    }
     removeParticle(p: Particle): boolean {
-        const meta = Metadata.from(this.metadata);
-
+        return this.particles.delete(p);
+    }
+    removeBeam(b: Beam): boolean {
+        return this.beams.delete(b);
     }
 }

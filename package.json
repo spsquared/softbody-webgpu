@@ -1,10 +1,10 @@
 {
-    "name": "terrible-softbody-webgpu",
+    "name": "softbody-webgpu",
     "version": "0.0.0",
     "description": "A WebGPU-based softbody simulation. What could go wrong?",
     "repository": {
         "type": "git",
-        "url": "git+https://github.com/spsquared/terrible-softbody-webgpu.git"
+        "url": "git+https://github.com/spsquared/softbody-webgpu.git"
     },
     "author": "Sampleprovider (sp)",
     "license": "GPL-3.0",

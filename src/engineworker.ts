@@ -1,6 +1,6 @@
 /// <reference types="@webgpu/types" />                                                                                                                                                        
 
-import { Beam, BufferMapper, Particle } from './engineMapping';
+import { Beam, BufferMapper, Particle, Vector2D } from './engineMapping';
 
 type BindGroupPair = { readonly layout: GPUBindGroupLayout, readonly group: GPUBindGroup };
 
@@ -334,7 +334,7 @@ class WGPUSoftbodyEngineWorker {
                 clearValue: { r: 0, g: 0, b: 0, a: 0 }
             }]
         });
-        renderPass.setPipeline(pipelines.renderBeams);
+        renderPass.setPipeline(pipelines.renderParticles);
         renderPass.setVertexBuffer(0, buffers.particles);
         renderPass.setBindGroup(0, bindGroups.render.group);
         renderPass.setIndexBuffer(buffers.mapping, 'uint16', 0, bufferMapper.maxParticles);
@@ -357,6 +357,15 @@ class WGPUSoftbodyEngineWorker {
     }
 
     private async beginDraw(): Promise<void> {
+        // TESTING CODE
+        const a = await this.bufferMapper;
+        a.load();
+        a.addParticle(new Particle(0, new Vector2D(10, 10), new Vector2D(1, 1)))
+        a.addParticle(new Particle(1, new Vector2D(10, 10), new Vector2D(1, 1)))
+        // a.addParticle(new Particle(2, new Vector2D(10, 10), new Vector2D(1, 1)))
+        // a.addParticle(new Particle(3, new Vector2D(10, 10), new Vector2D(1, 1)))
+        a.addBeam(new Beam(0, 0, 1, 100, 1, 1))
+        a.save();
         while (true) {
             await new Promise<void>((resolve) => {
                 requestAnimationFrame(async () => {

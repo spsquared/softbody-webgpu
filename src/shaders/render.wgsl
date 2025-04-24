@@ -22,25 +22,23 @@ struct ParticleVertexIn {
 }
 
 struct ParticleVertexOut {
-    @builtin(position) clip_position: vec4<f32>
-}
-
-struct ParticleFragIn {
-    @builtin(position) clip_position: vec4<f32>
+    @builtin(position) clip_position: vec4<f32>,
+    @location(0) uv: vec2<f32>
 }
 
 @vertex
 fn vertex_particle_main(vertex: ParticleVertexIn) -> ParticleVertexOut {
     var out: ParticleVertexOut;
     out.clip_position = to_clip_space(vertex.position + billboard_points[vertex.vertex_index] * particle_radius);
+    out.uv = vec2<f32>((2.0 - f32(vertex.vertex_index)), f32(vertex.vertex_index));
     return out;
 }
 
 @fragment
-fn fragment_particle_main(frag: ParticleFragIn) -> @location(0) vec4<f32> {
+fn fragment_particle_main(frag: ParticleVertexOut) -> @location(0) vec4<f32> {
     let thing = particle_radius;
-    // return vec4<f32>(frag.clip_position);
-    return vec4<f32>(1.0, 1.0, 1.0, 1.0);
+    return vec4<f32>(frag.uv, 0.0, 1.0);
+    // return vec4<f32>(1.0, 1.0, 1.0, 1.0);
 }
 
 @group(0) @binding(1)
@@ -63,13 +61,12 @@ struct BeamFragIn {
 fn vertex_beam_main(vertex: BeamVertexIn) -> BeamVertexOut {
     var out: BeamVertexOut;
     let b = grid_size;
-    // if (vertex.vertex_index == 1u) {
-    //     out.clip_position = to_clip_space(particles[vertex.particle_pair.x].position);
-    // }
-    // else {
-    //     out.clip_position = to_clip_space(particles[vertex.particle_pair.y].position);
-    // }
-    // out.clip_position = vec4<f32>(f32(vertex.vertex_index), f32(vertex.vertex_index * vertex.vertex_index), 10.0, 10.0);
+    if (vertex.vertex_index == 1u) {
+        out.clip_position = to_clip_space(particles[vertex.particle_pair.x].position);
+    }
+    else {
+        out.clip_position = to_clip_space(particles[vertex.particle_pair.y].position);
+    }
     return out;
 }
 
