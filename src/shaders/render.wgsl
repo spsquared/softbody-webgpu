@@ -23,21 +23,25 @@ struct ParticleVertexIn {
 
 struct ParticleVertexOut {
     @builtin(position) clip_position: vec4<f32>,
-    @location(0) n: f32
+    @location(0) center: vec4<f32>
 }
 
 @vertex
 fn vertex_particle_main(vertex: ParticleVertexIn) -> ParticleVertexOut {
     var out: ParticleVertexOut;
     out.clip_position = to_clip_space(vertex.position + billboard_points[vertex.vertex_index] * particle_radius);
-    out.n = f32(vertex.vertex_index);
+    // out.center = to_clip_space(vertex.position).xy;
+    out.center = out.clip_position;
+    // out.center = vertex.position / grid_size;
     return out;
 }
 
 @fragment
 fn fragment_particle_main(frag: ParticleVertexOut) -> @location(0) vec4<f32> {
-    let thing = particle_radius;
-    return vec4<f32>(1.0 - frag.n, 1.0 - abs(1 - frag.n), frag.n - 1.0, 1.0);
+    if (distance(frag.clip_position, frag.center) < 900.0) {
+        return vec4<f32>(0.0, 0.7, 1.0, 1.0);
+    }
+    return vec4<f32>(0.0, 0.0, 0.0, 0.0);
     // return vec4<f32>(1.0, 1.0, 1.0, 1.0);
 }
 
@@ -49,7 +53,7 @@ struct BeamVertexIn {
     // @location(0) particle_a: u32,
     // @location(1) particle_b: u32
     @location(0) particle_pair: u32,
-    @location(1) beam_length: f32
+    @location(1) target_length: f32
 }
 
 struct BeamVertexOut {

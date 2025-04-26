@@ -21,7 +21,7 @@ class WGPUSoftbodyEngineWorker {
     private readonly textureFormat: GPUTextureFormat;
 
     private readonly gridSize: number = 1000;
-    private readonly particleRadius: number = 10;
+    private readonly particleRadius: number = 100;
     private readonly subticks: number = 10;
 
     private readonly numWorkgroups = 64;
@@ -47,6 +47,8 @@ class WGPUSoftbodyEngineWorker {
         readonly renderParticles: GPURenderPipeline
         readonly renderBeams: GPURenderPipeline
     }>;
+
+    private readonly blur: number = 0.1;
 
     private readonly frameTimes: number[] = [];
     private readonly fpsHistory: number[] = [];
@@ -74,7 +76,8 @@ class WGPUSoftbodyEngineWorker {
             });
             this.ctx.configure({
                 device: gpu,
-                format: this.textureFormat
+                format: this.textureFormat,
+                alphaMode: 'premultiplied'
             });
             console.log('GPU limits', gpu.limits);
             resolve(gpu);
@@ -269,12 +272,16 @@ class WGPUSoftbodyEngineWorker {
                         module: modules.render,
                         entryPoint: 'fragment_particle_main',
                         constants: {
-                            particle_radius: this.particleRadius
+                            // grid_size: this.gridSize,
+                            // particle_radius: this.particleRadius
                         },
                         targets: [
                             {
                                 format: this.textureFormat,
-                                // blending moment
+                                blend: {
+                                    color: { operation: 'add', srcFactor: 'one', dstFactor: 'zero' },
+                                    alpha: { operation: 'add', srcFactor: 'one', dstFactor: 'one' }
+                                }
                             }
                         ]
                     },
@@ -358,7 +365,7 @@ class WGPUSoftbodyEngineWorker {
                 view: this.ctx.getCurrentTexture().createView(),
                 loadOp: 'clear',
                 storeOp: 'store',
-                clearValue: { r: 0, g: 0, b: 0, a: 0 }
+                clearValue: { r: 0, g: 0, b: 0, a: this.blur }
             }]
         });
         renderPass.setPipeline(pipelines.renderParticles);
@@ -404,7 +411,7 @@ class WGPUSoftbodyEngineWorker {
         const bufferMapper = await this.bufferMapper;
         bufferMapper.load();
         bufferMapper.addParticle(new Particle(0, new Vector2D(500, -500), new Vector2D(-5, 10)))
-        bufferMapper.addParticle(new Particle(1, new Vector2D(-500, -500), new Vector2D(1, 10)))
+        bufferMapper.addParticle(new Particle(1, new Vector2D(-500, -500), new Vector2D(0, -10)))
         // bufferMapper.addParticle(new Particle(2, new Vector2D(10, 10), new Vector2D(1, 1)))
         // bufferMapper.addParticle(new Particle(3, new Vector2D(10, 10), new Vector2D(1, 1)))
         bufferMapper.addBeam(new Beam(0, 0, 1, 100, 1, 1))

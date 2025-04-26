@@ -126,7 +126,7 @@ export class Beam {
      * - Particle A index: `uint16`
      * - Particle B index: `uint16`
      * - Target length: `f32`
-     * - Last distance: `f32`
+     * - Last length: `f32`
      * - Spring constant: `f32`
      * - Damping constant: `f32`
      */
@@ -188,9 +188,8 @@ export class Beam {
         const index = mBuf[mBufOffset + id];
         const uint16View = new Uint16Array(bBuf, index * Beam.stride, Beam.stride / Uint16Array.BYTES_PER_ELEMENT);
         const f32View = new Float32Array(bBuf, index * Beam.stride, Beam.stride / Float32Array.BYTES_PER_ELEMENT);
-        // ensure beam counters & particles not checked
-        const idA = mBuf.indexOf(uint16View[0], mBufOffset + 1);
-        const idB = mBuf.indexOf(uint16View[1], mBufOffset + 1);
+        const idA = mBuf.indexOf(uint16View[0]);
+        const idB = mBuf.indexOf(uint16View[1]);
         return new Beam(id, idA, idB, f32View[1], f32View[3], f32View[4], f32View[2]);
 
     }
@@ -212,24 +211,26 @@ export class Metadata {
      * - Beam first vertex - `u32`
      * - Beam base vertex - `u32`
      * - Beam first instance - `u32`
+     * - Max particles - `u32`
      * - Gravity - `f32`
      * - User applied force - `vec2<f32>`
      * - Mouse position - `vec2<f32>`
      * - Mouse velocity - `vec2<f32>`
      * - Mouse active - `u32`
      */
-    static readonly byteLength = 80; // particle/beam = 40, game - 32
+    static readonly byteLength = 84; // particle/beam = 40, game - 32
 
     readonly buf: ArrayBuffer;
     private readonly uint32View: Uint32Array;
     private readonly float32View: Float32Array;
 
-    constructor(buf: ArrayBuffer) {
+    constructor(buf: ArrayBuffer, maxParticles: number) {
         this.buf = buf;
         this.uint32View = new Uint32Array(this.buf);
         this.float32View = new Float32Array(this.buf);
         this.uint32View[0] = 3;
         this.uint32View[5] = 2;
+        this.uint32View[10] = maxParticles;
     }
 
     get particleCount(): number {
@@ -247,17 +248,17 @@ export class Metadata {
     }
 
     get gravity(): number {
-        return this.float32View[10];
+        return this.float32View[11];
     }
     set gravity(g: number) {
-        this.float32View[10] = g;
+        this.float32View[11] = g;
     }
 
     setUserInput(appliedForce: Vector2D, mousePos: Vector2D, mouseVel: Vector2D, mouseActive: boolean): void {
-        appliedForce.to(this.float32View, 11);
-        mousePos.to(this.float32View, 13);
-        mouseVel.to(this.float32View, 15);
-        this.uint32View[17] = mouseActive ? 1 : 0;
+        appliedForce.to(this.float32View, 12);
+        mousePos.to(this.float32View, 14);
+        mouseVel.to(this.float32View, 16);
+        this.uint32View[18] = mouseActive ? 1 : 0;
     }
 }
 
@@ -293,7 +294,7 @@ export class BufferMapper {
         this.particleData = new ArrayBuffer(Particle.stride * this.maxParticles);
         this.beamData = new ArrayBuffer(Beam.stride * this.maxParticles);
         this.mapping = new Uint16Array(2 * this.maxParticles);
-        this.meta = new Metadata(this.metadata);
+        this.meta = new Metadata(this.metadata, this.maxParticles);
     }
 
     // reading buffers will require a cpu readback to update buffers (very bad!!!)

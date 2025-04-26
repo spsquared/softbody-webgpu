@@ -3,15 +3,21 @@ override particle_radius: f32;
 override time_step: f32;
 
 struct ComputeParams {
-    @builtin(local_invocation_id) local_invocation_id: vec3<u32>,
-    @builtin(num_workgroups) num_workgroups: vec3<u32>,
-    @builtin(workgroup_id) workgroup_id: vec3<u32>
+    @builtin(global_invocation_id) global_invocation_id: vec3<u32>
 }
 
 struct Particle {
     p: vec2<f32>,
     v: vec2<f32>,
     a: vec2<f32>
+}
+
+struct Beam {
+    particle_pair: u32,
+    target_length: f32,
+    last_length: f32,
+    spring: f32,
+    damp: f32
 }
 
 struct Metadata {
@@ -25,6 +31,7 @@ struct Metadata {
     beam_f_v: u32,
     beam_b_v: u32,
     beam_f_i: u32,
+    max_particles: u32,
     gravity: f32,
     applied_force: vec2<f32>,
     mouse_pos: vec2<f32>,
@@ -33,25 +40,33 @@ struct Metadata {
 }
 
 @group(0) @binding(0) var<storage, read_write> particles: array<Particle>;
-@group(0) @binding(1) var<storage, read_write> beams: array<f32>;
+@group(0) @binding(1) var<storage, read_write> beams: array<Beam>;
 @group(0) @binding(2) var<storage, read> mappings: array<u32>;
 @group(0) @binding(3) var<uniform> metadata: Metadata;
 
 @compute @workgroup_size(64, 1, 1)
 fn compute_main(thread: ComputeParams) {
-    // Compute threads are striated across all particles - distributes particle compute load evenly
-    // e.g. 10 particles, 4 threads would have thread mapping 0,1,2,3,0,1,2,3,0,1
-    // Afterward, move particles that were not updated off the screen
-    // Update beams last, using atomic operations to ensure no race conditions updating particles (oof)
-    // Note that some beams may update before their particles due to being in different workgroups,
-    // cross-workgroup synchronization doesn't exist
-
-    let b = thread.local_invocation_id;
     let dsf = particle_radius;
-    let d = thread.workgroup_id * grid_size;
+    let d = grid_size;
 
     // index to search in mapping buffer sections (y/z dims not used)
-    let mapping_index = (thread.workgroup_id * thread.num_workgroups + thread.local_invocation_id).x;
+    let mapping_index = thread.global_invocation_id.x;
+
+    // beam sim
+    if (mapping_index <= metadata.beam_i_c) {
+        var beam = beams[mappings[metadata.max_particles + mapping_index]];
+        // read particles normally
+        let index_a = extractBits(beam.particle_pair, 0, 16);
+        let index_b = extractBits(beam.particle_pair, 16, 16);
+        var particle_a = particles[index_a];
+        var particle_b = particles[index_b];
+        let dir = particle_b.p - particle_a.p;
+        beam.last_length = length(dir);
+        beams[mappings[metadata.max_particles + mapping_index]] = beam;
+        // atomically write particles
+    }
+
+    workgroupBarrier();
 
     // particle sim (don't simulate particles that don't exist)
     if (mapping_index <= metadata.particle_i_c) {
@@ -59,7 +74,9 @@ fn compute_main(thread: ComputeParams) {
         // apply gravity
         particle.a.y -= metadata.gravity;
         // apply acceleration and velocity (all particles have mass 1)
-        particle.p += particle.v * time_step + particle.a * time_step * time_step;
+        particle.v += particle.a * time_step;
+        particle.p += particle.v * time_step;
+        particle.a = vec2<f32>(0.0, 0.0);
         particles[mappings[mapping_index]] = particle;
     }
 
@@ -68,9 +85,4 @@ fn compute_main(thread: ComputeParams) {
     // particle "delete"
 
 
-    workgroupBarrier();
-
-    // beam sim
-    // use non-atomic operations to read all the particles first, then barrier, then atomic write to acceleration?
-    // or just atomic everything
 }
