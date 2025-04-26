@@ -1,7 +1,6 @@
 type TypedArray = Uint8Array | Int8Array | Uint16Array | Int16Array | Uint32Array | Int32Array | Float32Array | Float64Array;
 
 // THERE IS NO VALIDATION FOR ANYTHING, IF SOMETHING GOES WRONG THERE WILL BE WEIRD ERRORS
-// Note: If weird offsets are needed (4-byte type needs 2-byte offset), slice the ArrayBuffer to shift for reading and use copyWithin to shift for writing
 
 /**
  * Defines buffer structs for placing vectors into GPU buffers.
@@ -70,12 +69,11 @@ export class Particle {
     /**
      * Buffer stride in bytes.
      * - Position: `vec2<f32>`
-     * - Last Position: `vec2<f32>`
+     * - Velocity: `vec2<f32>`
      * - Acceleration: `vec2<f32>`
      */
     static readonly stride = 24;
 
-    // Verlet integration uses position and last position, so velocity gets converted
     readonly id: number;
     position: Vector2D;
     velocity: Vector2D;
@@ -100,7 +98,7 @@ export class Particle {
         mBuf[this.id] = index;
         const f32View = new Float32Array(pBuf, index * Particle.stride, Particle.stride / Float32Array.BYTES_PER_ELEMENT);
         this.position.to(f32View, 0);
-        this.position.sub(this.velocity).to(f32View, 2);
+        this.velocity.to(f32View, 2);
         this.acceleration.to(f32View, 4);
     }
 
@@ -115,7 +113,7 @@ export class Particle {
     static from(pBuf: ArrayBuffer, mBuf: Uint16Array, id: number): Particle {
         const index = mBuf[id];
         const f32View = new Float32Array(pBuf, index * Particle.stride, Particle.stride / Float32Array.BYTES_PER_ELEMENT);
-        return new Particle(id, Vector2D.from(f32View, 0), Vector2D.from(f32View, 0).sub(Vector2D.from(f32View, 2)), Vector2D.from(f32View, 4));
+        return new Particle(id, Vector2D.from(f32View, 0), Vector2D.from(f32View, 2), Vector2D.from(f32View, 4));
     }
 }
 
@@ -174,6 +172,7 @@ export class Beam {
         f32View[2] = this.lastDist;
         f32View[3] = this.spring;
         f32View[4] = this.damp;
+        console.log(uint16View, new Uint32Array(bBuf, index * Beam.stride, Beam.stride / Uint32Array.BYTES_PER_ELEMENT))
     }
 
     /**
@@ -203,25 +202,32 @@ export class Beam {
 export class Metadata {
     /**
      * Size of buffer needed to contain metadata in bytes.
-     * - Particle vertex count - `uint32`
-     * - Particle instance count - `uint32`
-     * - Particle first vertex - `uint32`
-     * - Particle base vertex - `uint32`
-     * - Particle first instance - `uint32`
-     * - Beam vertex count - `uint32`
-     * - Beam instance count - `uint32`
-     * - Beam first vertex - `uint32`
-     * - Beam base vertex - `uint32`
-     * - Beam first instance - `uint32`
+     * - Particle vertex count - `u32`
+     * - Particle instance count - `u32`
+     * - Particle first vertex - `u32`
+     * - Particle base vertex - `u32`
+     * - Particle first instance - `u32`
+     * - Beam vertex count - `u32`
+     * - Beam instance count - `u32`
+     * - Beam first vertex - `u32`
+     * - Beam base vertex - `u32`
+     * - Beam first instance - `u32`
+     * - Gravity - `f32`
+     * - User applied force - `vec2<f32>`
+     * - Mouse position - `vec2<f32>`
+     * - Mouse velocity - `vec2<f32>`
+     * - Mouse active - `u32`
      */
-    static readonly byteLength = 40;
+    static readonly byteLength = 80; // particle/beam = 40, game - 32
 
     readonly buf: ArrayBuffer;
     private readonly uint32View: Uint32Array;
+    private readonly float32View: Float32Array;
 
     constructor(buf: ArrayBuffer) {
         this.buf = buf;
         this.uint32View = new Uint32Array(this.buf);
+        this.float32View = new Float32Array(this.buf);
         this.uint32View[0] = 3;
         this.uint32View[5] = 2;
     }
@@ -239,24 +245,31 @@ export class Metadata {
     set beamCount(c: number) {
         this.uint32View[6] = c;
     }
+
+    get gravity(): number {
+        return this.float32View[10];
+    }
+    set gravity(g: number) {
+        this.float32View[10] = g;
+    }
+
+    setUserInput(appliedForce: Vector2D, mousePos: Vector2D, mouseVel: Vector2D, mouseActive: boolean): void {
+        appliedForce.to(this.float32View, 11);
+        mousePos.to(this.float32View, 13);
+        mouseVel.to(this.float32View, 15);
+        this.uint32View[17] = mouseActive ? 1 : 0;
+    }
 }
 
 /**
  * Defines buffer structs for locating particles and beams by ID in GPU buffers.
- * Mapping buffers can hold up to `N` particles and `N` beams in `uint16` format,
- * with each index holding the location of the data in the respective buffer,
- * effectively acting as an index buffer.
- * 
- * particle/beam sections are contiguous
- * particle/beam IDs are not guaranteed to stay the same
- * 
- * add cursor, camera, to metadata
- * 
- * Metadata buffer is also used as indirect buffer drawing
- * Metadata holds number of particles/beams
- * Mapping buffer is contiguous for the number of particles/beams
- * Particles/beams never move within the data buffers, to make beam computations faster
- * IDs of particles not guaranteed to stay the same
+ * - Mapping buffers can hold up to `N` particles and `N` beams in `uint16` format,
+ * with each index holding the location of the data in the respective buffer.
+ * - Metadata buffer is also used as indirect buffer drawing
+ * - Metadata holds number of particles/beams
+ * - Mapping buffer is contiguous for the number of particles/beams
+ * - Particles/beams never move within the data buffers, to make beam computations faster
+ * - IDs of particles not guaranteed to stay the same
  */
 export class BufferMapper {
     readonly metadata: ArrayBuffer;

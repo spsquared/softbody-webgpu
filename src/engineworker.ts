@@ -21,7 +21,10 @@ class WGPUSoftbodyEngineWorker {
     private readonly textureFormat: GPUTextureFormat;
 
     private readonly gridSize: number = 1000;
-    private readonly particleRadius: number = 100;
+    private readonly particleRadius: number = 10;
+    private readonly subticks: number = 10;
+
+    private readonly numWorkgroups = 64;
 
     private readonly modules: Promise<{
         readonly compute: GPUShaderModule
@@ -37,7 +40,7 @@ class WGPUSoftbodyEngineWorker {
     }>;
     private readonly bindGroups: Promise<{
         readonly compute: BindGroupPair
-        readonly render: BindGroupPair
+        readonly renderBeams: BindGroupPair
     }>;
     private readonly pipelines: Promise<{
         readonly compute: GPUComputePipeline
@@ -195,7 +198,7 @@ class WGPUSoftbodyEngineWorker {
                         ]
                     })
                 },
-                render: {
+                renderBeams: {
                     layout: renderBindGroupLayout,
                     group: device.createBindGroup({
                         label: 'Render bind group',
@@ -230,7 +233,8 @@ class WGPUSoftbodyEngineWorker {
                         entryPoint: 'compute_main',
                         constants: {
                             grid_size: this.gridSize,
-                            particle_radius: this.particleRadius
+                            particle_radius: this.particleRadius,
+                            time_step: 1 / this.subticks
                         }
                     }
                 }),
@@ -238,7 +242,7 @@ class WGPUSoftbodyEngineWorker {
                     label: 'Particle render pipeline',
                     layout: device.createPipelineLayout({
                         label: 'Particle render pipeline layout',
-                        bindGroupLayouts: [bindGroups.render.layout]
+                        bindGroupLayouts: []
                     }),
                     vertex: {
                         module: modules.render,
@@ -283,7 +287,7 @@ class WGPUSoftbodyEngineWorker {
                     label: 'Beam render pipeline',
                     layout: device.createPipelineLayout({
                         label: 'Beam render pipeline layout',
-                        bindGroupLayouts: [bindGroups.render.layout]
+                        bindGroupLayouts: [bindGroups.renderBeams.layout]
                     }),
                     vertex: {
                         module: modules.render,
@@ -297,8 +301,13 @@ class WGPUSoftbodyEngineWorker {
                                 attributes: [
                                     {
                                         shaderLocation: 0,
-                                        format: 'uint16x2',
+                                        format: 'uint32',
                                         offset: 0
+                                    },
+                                    {
+                                        shaderLocation: 1,
+                                        format: 'float32',
+                                        offset: 4
                                     }
                                 ],
                                 stepMode: 'instance'
@@ -341,7 +350,7 @@ class WGPUSoftbodyEngineWorker {
         });
         computePass.setPipeline(pipelines.compute);
         computePass.setBindGroup(0, bindGroups.compute.group);
-        computePass.dispatchWorkgroups(Math.ceil(bufferMapper.maxParticles / 64), 1, 1);
+        for (let i = 0; i < this.subticks; i++) computePass.dispatchWorkgroups(Math.ceil(bufferMapper.maxParticles / this.numWorkgroups), 1, 1);
         computePass.end();
         const renderPass = encoder.beginRenderPass({
             label: 'Render pass',
@@ -354,15 +363,10 @@ class WGPUSoftbodyEngineWorker {
         });
         renderPass.setPipeline(pipelines.renderParticles);
         renderPass.setVertexBuffer(0, buffers.particles);
-        renderPass.setBindGroup(0, bindGroups.render.group);
-        renderPass.setIndexBuffer(buffers.mapping, 'uint16', 0, bufferMapper.maxParticles);
-        // renderPass.drawIndexedIndirect(buffers.metadata, 0);
         renderPass.drawIndirect(buffers.metadata, 0);
         renderPass.setPipeline(pipelines.renderBeams);
-        renderPass.setVertexBuffer(0, buffers.particles);
-        renderPass.setBindGroup(0, bindGroups.render.group);
-        renderPass.setIndexBuffer(buffers.mapping, 'uint16', bufferMapper.maxParticles, bufferMapper.maxParticles);
-        // renderPass.drawIndexedIndirect(buffers.metadata, 20);
+        renderPass.setVertexBuffer(0, buffers.beams);
+        renderPass.setBindGroup(0, bindGroups.renderBeams.group);
         renderPass.drawIndirect(buffers.metadata, 20);
         renderPass.end();
         device.queue.submit([encoder.finish()]);
@@ -376,27 +380,41 @@ class WGPUSoftbodyEngineWorker {
         return this.frameTimes.length;
     }
 
+    async loadBuffers(): Promise<void> {
+        const device = await this.device;
+        const buffers = await this.buffers;
+        const bufferMapper = await this.bufferMapper;
+        throw new Error('buh no staging buffer to read from')
+    }
+
+    async writeBuffers(): Promise<void> {
+        const device = await this.device;
+        const buffers = await this.buffers;
+        const bufferMapper = await this.bufferMapper;
+        device.queue.writeBuffer(buffers.metadata, 0, bufferMapper.metadata, 0);
+        device.queue.writeBuffer(buffers.mapping, 0, bufferMapper.mapping, 0);
+        device.queue.writeBuffer(buffers.particles, 0, bufferMapper.particleData, 0);
+        device.queue.writeBuffer(buffers.beams, 0, bufferMapper.beamData, 0);
+    }
+
     private async beginDraw(): Promise<void> {
         // TESTING CODE
         // TESTING CODE
         // TESTING CODE
         const bufferMapper = await this.bufferMapper;
         bufferMapper.load();
-        bufferMapper.addParticle(new Particle(0, new Vector2D(500, 500), new Vector2D(1, 1)))
-        bufferMapper.addParticle(new Particle(1, new Vector2D(-500, -500), new Vector2D(1, 1)))
+        bufferMapper.addParticle(new Particle(0, new Vector2D(500, -500), new Vector2D(-5, 10)))
+        bufferMapper.addParticle(new Particle(1, new Vector2D(-500, -500), new Vector2D(1, 10)))
         // bufferMapper.addParticle(new Particle(2, new Vector2D(10, 10), new Vector2D(1, 1)))
         // bufferMapper.addParticle(new Particle(3, new Vector2D(10, 10), new Vector2D(1, 1)))
         bufferMapper.addBeam(new Beam(0, 0, 1, 100, 1, 1))
+        bufferMapper.meta.gravity = 1;
         bufferMapper.save();
-        const device = await this.device;
-        const buffers = await this.buffers;
-        device.queue.writeBuffer(buffers.metadata, 0, bufferMapper.metadata, 0);
-        device.queue.writeBuffer(buffers.mapping, 0, bufferMapper.mapping, 0);
-        device.queue.writeBuffer(buffers.particles, 0, bufferMapper.particleData, 0);
-        device.queue.writeBuffer(buffers.beams, 0, bufferMapper.beamData, 0);
+        await this.writeBuffers();
         // STILL TESTING CODE
         // STILL TESTING CODE
         // STILL TESTING CODE
+        // console.log(new Uint32Array(bufferMapper.beamData))
         while (true) {
             await new Promise<void>((resolve) => {
                 requestAnimationFrame(async () => {

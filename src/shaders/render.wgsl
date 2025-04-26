@@ -46,31 +46,36 @@ var<storage, read> particles: array<Particle>;
 
 struct BeamVertexIn {
     @builtin(vertex_index) vertex_index: u32,
-    @location(0) particle_pair: vec2<u32>,
+    // @location(0) particle_a: u32,
+    // @location(1) particle_b: u32
+    @location(0) particle_pair: u32,
+    @location(1) beam_length: f32
 }
 
 struct BeamVertexOut {
-    @builtin(position) clip_position: vec4<f32>
-}
-
-struct BeamFragIn {
-    @builtin(position) clip_position: vec4<f32>
+    @builtin(position) clip_position: vec4<f32>,
+    @location(0) stress_color: vec4<f32>
 }
 
 @vertex
 fn vertex_beam_main(vertex: BeamVertexIn) -> BeamVertexOut {
     var out: BeamVertexOut;
     let b = grid_size;
-    if (vertex.vertex_index == 1u) {
-        out.clip_position = to_clip_space(particles[vertex.particle_pair.x].position);
-    }
-    else {
-        out.clip_position = to_clip_space(particles[vertex.particle_pair.y].position);
-    }
+    // pair is two u16, but wgsl doesn't have u16 type
+    // out.clip_position = to_clip_space(particles[(vertex.particle_pair >> ((vertex.vertex_index - 1) * 16)) & 0xFFFF].position);
+    out.clip_position = to_clip_space(particles[extractBits(vertex.particle_pair, vertex.vertex_index * 16, 16)].position);
+    // out.clip_position = vec4<f32>(f32(vertex.vertex_index) * 65536.0, f32((vertex.particle_pair >> 16) & 0xFFFF), 10.0, 65536.0);
+    // if (vertex.vertex_index == 1u) {
+    //     out.clip_position = to_clip_space(particles[vertex.particle_a & 0xFF].position);
+    // }
+    // else {
+    //     out.clip_position = to_clip_space(particles[vertex.particle_b & 0xFF].position);
+    // }
+    out.stress_color = vec4<f32>(1.0, 1.0, 1.0, 1.0);
     return out;
 }
 
 @fragment
-fn fragment_beam_main(frag: BeamFragIn) -> @location(0) vec4<f32> {
-    return vec4<f32>(1.0, 1.0, 1.0, 1.0);
+fn fragment_beam_main(frag: BeamVertexOut) -> @location(0) vec4<f32> {
+    return frag.stress_color;
 }
