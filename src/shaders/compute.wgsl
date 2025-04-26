@@ -54,35 +54,35 @@ fn compute_main(thread: ComputeParams) {
     let d = grid_size;
 
     // index to search in mapping buffer sections (y/z dims not used)
-    let mapping_index = thread.global_invocation_id.x;
+    let index = thread.global_invocation_id.x;
 
     // beam sim
-    if (mapping_index <= metadata.beam_i_c) {
-        var beam = beams[mappings[metadata.max_particles + mapping_index]];
-        // read particles normally
-        let index_a = extractBits(beam.particle_pair, 0, 16);
-        let index_b = extractBits(beam.particle_pair, 16, 16);
-        var particle_a = particles[index_a];
-        var particle_b = particles[index_b];
-        let dir = particle_b.p - particle_a.p;
-        beam.last_length = length(dir);
-        beams[mappings[metadata.max_particles + mapping_index]] = beam;
-        // atomically write particles
-    }
+    var beam = beams[metadata.max_particles + index];
+    // read particles normally
+    let index_a = extractBits(beam.particle_pair, 0, 16);
+    let index_b = extractBits(beam.particle_pair, 16, 16);
+    var particle_a = particles[index_a];
+    var particle_b = particles[index_b];
+    let dir = particle_b.p - particle_a.p;
+    beam.last_length = length(dir);
+    beams[metadata.max_particles + index] = beam;
+    // atomically write particles
+
+    // borky temp test code
+    particles[index_a].v += dir;
+    particles[index_b].v -= dir;
 
     workgroupBarrier();
 
-    // particle sim (don't simulate particles that don't exist)
-    if (mapping_index <= metadata.particle_i_c) {
-        var particle = particles[mappings[mapping_index]];
-        // apply gravity
-        particle.a.y -= metadata.gravity;
-        // apply acceleration and velocity (all particles have mass 1)
-        particle.v += particle.a * time_step;
-        particle.p += particle.v * time_step;
-        particle.a = vec2<f32>(0.0, 0.0);
-        particles[mappings[mapping_index]] = particle;
-    }
+    // particle sim
+    var particle = particles[index];
+    // apply gravity
+    particle.a.y -= metadata.gravity;
+    // apply acceleration and velocity (all particles have mass 1)
+    particle.v += particle.a * time_step;
+    particle.p += particle.v * time_step;
+    particle.a = vec2<f32>(0.0, 0.0);
+    particles[index] = particle;
 
     workgroupBarrier();
 

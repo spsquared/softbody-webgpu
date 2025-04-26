@@ -21,7 +21,7 @@ class WGPUSoftbodyEngineWorker {
     private readonly textureFormat: GPUTextureFormat;
 
     private readonly gridSize: number = 1000;
-    private readonly particleRadius: number = 50;
+    private readonly particleRadius: number = 10;
     private readonly subticks: number = 10;
 
     private readonly numWorkgroups = 64;
@@ -48,7 +48,7 @@ class WGPUSoftbodyEngineWorker {
         readonly renderBeams: GPURenderPipeline
     }>;
 
-    private readonly blur: number = 0.1;
+    private readonly blur: number = 0.4;
 
     private readonly frameTimes: number[] = [];
     private readonly fpsHistory: number[] = [];
@@ -278,8 +278,8 @@ class WGPUSoftbodyEngineWorker {
                             {
                                 format: this.textureFormat,
                                 blend: {
-                                    color: { operation: 'add', srcFactor: 'one', dstFactor: 'one-minus-src' },
-                                    alpha: { operation: 'add', srcFactor: 'one', dstFactor: 'one-minus-src' }
+                                    color: { operation: 'add', srcFactor: 'one', dstFactor: 'one-minus-src-alpha' },
+                                    alpha: { operation: 'add', srcFactor: 'one', dstFactor: 'one-minus-src-alpha' }
                                 }
                             }
                         ]
