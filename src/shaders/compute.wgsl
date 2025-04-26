@@ -39,10 +39,14 @@ struct Metadata {
     mouse_active: u32
 }
 
-@group(0) @binding(0) var<storage, read_write> particles: array<Particle>;
-@group(0) @binding(1) var<storage, read_write> beams: array<Beam>;
-@group(0) @binding(2) var<storage, read> mappings: array<u32>;
-@group(0) @binding(3) var<uniform> metadata: Metadata;
+@group(0) @binding(0)
+var<storage, read_write> particles: array<Particle>;
+@group(0) @binding(1)
+var<storage, read_write> beams: array<Beam>;
+@group(0) @binding(2)
+var<storage, read> mappings: array<u32>;
+@group(0) @binding(3)
+var<uniform> metadata: Metadata;
 
 @compute @workgroup_size(64, 1, 1)
 fn compute_main(thread: ComputeParams) {
@@ -83,6 +87,5 @@ fn compute_main(thread: ComputeParams) {
     workgroupBarrier();
 
     // particle "delete"
-
 
 }

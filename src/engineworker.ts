@@ -21,7 +21,7 @@ class WGPUSoftbodyEngineWorker {
     private readonly textureFormat: GPUTextureFormat;
 
     private readonly gridSize: number = 1000;
-    private readonly particleRadius: number = 100;
+    private readonly particleRadius: number = 50;
     private readonly subticks: number = 10;
 
     private readonly numWorkgroups = 64;
@@ -272,15 +272,14 @@ class WGPUSoftbodyEngineWorker {
                         module: modules.render,
                         entryPoint: 'fragment_particle_main',
                         constants: {
-                            // grid_size: this.gridSize,
-                            // particle_radius: this.particleRadius
+                            particle_radius: this.particleRadius
                         },
                         targets: [
                             {
                                 format: this.textureFormat,
                                 blend: {
-                                    color: { operation: 'add', srcFactor: 'one', dstFactor: 'zero' },
-                                    alpha: { operation: 'add', srcFactor: 'one', dstFactor: 'one' }
+                                    color: { operation: 'add', srcFactor: 'one', dstFactor: 'one-minus-src' },
+                                    alpha: { operation: 'add', srcFactor: 'one', dstFactor: 'one-minus-src' }
                                 }
                             }
                         ]
@@ -410,8 +409,8 @@ class WGPUSoftbodyEngineWorker {
         // TESTING CODE
         const bufferMapper = await this.bufferMapper;
         bufferMapper.load();
-        bufferMapper.addParticle(new Particle(0, new Vector2D(500, -500), new Vector2D(-5, 10)))
-        bufferMapper.addParticle(new Particle(1, new Vector2D(-500, -500), new Vector2D(0, -10)))
+        bufferMapper.addParticle(new Particle(0, new Vector2D(500, 500), new Vector2D(-5, 10)))
+        bufferMapper.addParticle(new Particle(1, new Vector2D(400, 500), new Vector2D(0, -10)))
         // bufferMapper.addParticle(new Particle(2, new Vector2D(10, 10), new Vector2D(1, 1)))
         // bufferMapper.addParticle(new Particle(3, new Vector2D(10, 10), new Vector2D(1, 1)))
         bufferMapper.addBeam(new Beam(0, 0, 1, 100, 1, 1))

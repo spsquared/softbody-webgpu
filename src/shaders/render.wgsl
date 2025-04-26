@@ -1,15 +1,11 @@
 override grid_size: f32;
 override particle_radius: f32;
 
-const billboard_points: array<vec2<f32>, 3> = array<vec2<f32>, 3>(
-    vec2<f32>(0.0, 2.0),
-    vec2<f32>(-sqrt(3.0), -1.0),
-    vec2<f32>(sqrt(3.0), -1.0),
-);
+const billboard_points: array<vec2<f32>, 3> = array<vec2<f32>, 3>(vec2<f32>(0.0, 2.0), vec2<f32>(- sqrt(3.0), - 1.0), vec2<f32>(sqrt(3.0), - 1.0),);
 
-const clip_offset: vec2<f32> = vec2<f32>(- 0.5, - 0.5);
+const clip_offset: vec2<f32> = vec2<f32>(- 1.0, - 1.0);
 fn to_clip_space(pos: vec2<f32>) -> vec4<f32> {
-    return vec4<f32>(pos / grid_size, 0.0, 1.0);
+    return vec4<f32>(2 * pos / grid_size + clip_offset, 0.0, 1.0);
 }
 
 struct Particle {
@@ -23,26 +19,30 @@ struct ParticleVertexIn {
 
 struct ParticleVertexOut {
     @builtin(position) clip_position: vec4<f32>,
-    @location(0) center: vec4<f32>
+    @location(0) position: vec2<f32>,
+    @location(1) center: vec2<f32>
+}
+
+struct ParticleFragIn {
+    @location(0) position: vec2<f32>,
+    @location(1) center: vec2<f32>
 }
 
 @vertex
 fn vertex_particle_main(vertex: ParticleVertexIn) -> ParticleVertexOut {
     var out: ParticleVertexOut;
-    out.clip_position = to_clip_space(vertex.position + billboard_points[vertex.vertex_index] * particle_radius);
-    // out.center = to_clip_space(vertex.position).xy;
-    out.center = out.clip_position;
-    // out.center = vertex.position / grid_size;
+    out.center = vertex.position;
+    out.position = vertex.position + billboard_points[vertex.vertex_index] * particle_radius;
+    out.clip_position = to_clip_space(out.position);
     return out;
 }
 
 @fragment
-fn fragment_particle_main(frag: ParticleVertexOut) -> @location(0) vec4<f32> {
-    if (distance(frag.clip_position, frag.center) < 900.0) {
+fn fragment_particle_main(frag: ParticleFragIn) -> @location(0) vec4<f32> {
+    if (distance(frag.position, frag.center) < particle_radius) {
         return vec4<f32>(0.0, 0.7, 1.0, 1.0);
     }
     return vec4<f32>(0.0, 0.0, 0.0, 0.0);
-    // return vec4<f32>(1.0, 1.0, 1.0, 1.0);
 }
 
 @group(0) @binding(1)
@@ -58,6 +58,10 @@ struct BeamVertexIn {
 
 struct BeamVertexOut {
     @builtin(position) clip_position: vec4<f32>,
+    @location(0) stress_color: vec4<f32>
+}
+
+struct BeamFragIn {
     @location(0) stress_color: vec4<f32>
 }
 
@@ -80,6 +84,6 @@ fn vertex_beam_main(vertex: BeamVertexIn) -> BeamVertexOut {
 }
 
 @fragment
-fn fragment_beam_main(frag: BeamVertexOut) -> @location(0) vec4<f32> {
+fn fragment_beam_main(frag: BeamFragIn) -> @location(0) vec4<f32> {
     return frag.stress_color;
 }
