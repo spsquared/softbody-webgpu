@@ -69,8 +69,8 @@ fn compute_main(thread: ComputeParams) {
     // atomically write particles
 
     // borky temp test code
-    particles[index_a].v += dir;
-    particles[index_b].v -= dir;
+    particles[index_a].v += dir * beam.spring;
+    particles[index_b].v -= dir * beam.spring;
 
     workgroupBarrier();
 

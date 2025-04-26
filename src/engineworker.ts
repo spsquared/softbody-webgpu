@@ -410,12 +410,18 @@ class WGPUSoftbodyEngineWorker {
         const bufferMapper = await this.bufferMapper;
         bufferMapper.load();
         bufferMapper.addParticle(new Particle(0, new Vector2D(500, 500), new Vector2D(-5, 10)))
-        bufferMapper.addParticle(new Particle(1, new Vector2D(400, 500), new Vector2D(0, -10)))
+        bufferMapper.addParticle(new Particle(1, new Vector2D(400, 500), new Vector2D(0, 10)))
+        bufferMapper.addParticle(new Particle(1, new Vector2D(400, 500), new Vector2D(0, 1)))
+        bufferMapper.addParticle(new Particle(1, new Vector2D(400, 500), new Vector2D(0, 23)))
+        bufferMapper.addParticle(new Particle(1, new Vector2D(400, 500), new Vector2D(0, 4)))
+        bufferMapper.addParticle(new Particle(1, new Vector2D(400, 500), new Vector2D(0, 34)))
         // bufferMapper.addParticle(new Particle(2, new Vector2D(10, 10), new Vector2D(1, 1)))
         // bufferMapper.addParticle(new Particle(3, new Vector2D(10, 10), new Vector2D(1, 1)))
-        bufferMapper.addBeam(new Beam(0, 0, 1, 100, 1, 1))
+        bufferMapper.addBeam(new Beam(0, 0, 1, 100, 100, 1))
         bufferMapper.meta.gravity = 1;
         bufferMapper.save();
+        bufferMapper.meta.particleCount = bufferMapper.maxParticles;
+        bufferMapper.meta.beamCount = bufferMapper.maxParticles;
         await this.writeBuffers();
         // STILL TESTING CODE
         // STILL TESTING CODE
