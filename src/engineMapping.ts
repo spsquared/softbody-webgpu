@@ -172,7 +172,6 @@ export class Beam {
         f32View[2] = this.lastDist;
         f32View[3] = this.spring;
         f32View[4] = this.damp;
-        console.log(uint16View, new Uint32Array(bBuf, index * Beam.stride, Beam.stride / Uint32Array.BYTES_PER_ELEMENT))
     }
 
     /**

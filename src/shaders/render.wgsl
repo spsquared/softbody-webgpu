@@ -9,7 +9,7 @@ fn to_clip_space(pos: vec2<f32>) -> vec4<f32> {
 }
 
 struct Particle {
-    @location(0) position: vec2<f32>
+    @size(24) @location(0) position: vec2<f32>
 }
 
 struct ParticleVertexIn {

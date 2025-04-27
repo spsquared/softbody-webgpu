@@ -57,7 +57,7 @@ fn compute_main(thread: ComputeParams) {
     let index = thread.global_invocation_id.x;
 
     // beam sim
-    var beam = beams[metadata.max_particles + index];
+    var beam = beams[index];
     // read particles normally
     let index_a = extractBits(beam.particle_pair, 0, 16);
     let index_b = extractBits(beam.particle_pair, 16, 16);
@@ -65,12 +65,8 @@ fn compute_main(thread: ComputeParams) {
     var particle_b = particles[index_b];
     let dir = particle_b.p - particle_a.p;
     beam.last_length = length(dir);
-    beams[metadata.max_particles + index] = beam;
+    beams[index] = beam;
     // atomically write particles
-
-    // borky temp test code
-    particles[index_a].a -= dir * beam.spring;
-    particles[index_b].a += dir * beam.spring;
 
     workgroupBarrier();
 
@@ -81,15 +77,12 @@ fn compute_main(thread: ComputeParams) {
     // border collisions (very simple)
     let clamped_pos = clamp(particle.p, vec2<f32>(particle_radius, particle_radius), vec2<f32>(f32(grid_size) - particle_radius, f32(grid_size) - particle_radius));
     if (particle.p.x != clamped_pos.x) {
+        particle.a.y -= sign(particle.v.y) * border_friction * abs(particle.v.x) * (1 + border_elasticity);
         particle.v.x *= -border_elasticity;
     }
     if (particle.p.y != clamped_pos.y) {
+        particle.a.x -= sign(particle.v.x) * border_friction * abs(particle.v.y) * (1 + border_elasticity);
         particle.v.y *= -border_elasticity;
-        particle.v.x -= sign(particle.v.x) * border_friction * abs(particle.v.y) * (1 + border_elasticity) / time_step;
-        // dv = v.y + (v.y * elasticity) = v.y * (1 + elasticity)
-        // F_N * dt = m * dv
-        // F_N = dv / dt
-        // F_k = mu * F_N = mu * dv / dt
     }
     particle.p = clamped_pos;
     // apply acceleration and velocity (all particles have mass 1)
