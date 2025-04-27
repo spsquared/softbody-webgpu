@@ -9,7 +9,9 @@ fn to_clip_space(pos: vec2<f32>) -> vec4<f32> {
 }
 
 struct Particle {
-    @size(24) @location(0) position: vec2<f32>
+    p: vec2<f32>,
+    v: vec2<f32>,
+    a: vec2<f32>
 }
 
 struct ParticleVertexIn {
@@ -75,15 +77,7 @@ fn vertex_beam_main(vertex: BeamVertexIn) -> BeamVertexOut {
     var out: BeamVertexOut;
     let b = grid_size;
     // pair is two u16, but wgsl doesn't have u16 type
-    // out.clip_position = to_clip_space(particles[(vertex.particle_pair >> ((vertex.vertex_index - 1) * 16)) & 0xFFFF].position);
-    out.clip_position = to_clip_space(particles[extractBits(vertex.particle_pair, vertex.vertex_index * 16, 16)].position);
-    // out.clip_position = vec4<f32>(f32(vertex.vertex_index) * 65536.0, f32((vertex.particle_pair >> 16) & 0xFFFF), 10.0, 65536.0);
-    // if (vertex.vertex_index == 1u) {
-    //     out.clip_position = to_clip_space(particles[vertex.particle_a & 0xFF].position);
-    // }
-    // else {
-    //     out.clip_position = to_clip_space(particles[vertex.particle_b & 0xFF].position);
-    // }
+    out.clip_position = to_clip_space(particles[extractBits(vertex.particle_pair, vertex.vertex_index * 16, 16)].p);
     out.stress_color = vec4<f32>(1.0, 1.0, 1.0, 1.0);
     return out;
 }

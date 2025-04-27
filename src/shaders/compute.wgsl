@@ -51,45 +51,58 @@ var<storage, read> mappings: array<u32>;
 @group(0) @binding(3)
 var<uniform> metadata: Metadata;
 
+// once again wgpu not having u16 is annoying
+@must_use
+fn getMappedIndex(id: u32) -> u32 {
+    return extractBits(mappings[id / 2], ((id + 1) % 2) * 16, 16);
+}
+
 @compute @workgroup_size(64, 1, 1)
 fn compute_main(thread: ComputeParams) {
     // index to search in mapping buffer sections (y/z dims not used)
-    let index = thread.global_invocation_id.x;
+    let mapping_index = thread.global_invocation_id.x;
 
     // beam sim
-    var beam = beams[index];
-    // read particles normally
-    let index_a = extractBits(beam.particle_pair, 0, 16);
-    let index_b = extractBits(beam.particle_pair, 16, 16);
-    var particle_a = particles[index_a];
-    var particle_b = particles[index_b];
-    let dir = particle_b.p - particle_a.p;
-    beam.last_length = length(dir);
-    beams[index] = beam;
-    // atomically write particles
+    if (mapping_index < metadata.beam_i_c) {
+        let index = getMappedIndex(metadata.max_particles + mapping_index);
+        var beam = beams[index];
+        // read particles normally
+        let index_a = extractBits(beam.particle_pair, 0, 16);
+        let index_b = extractBits(beam.particle_pair, 16, 16);
+        var particle_a = particles[index_a];
+        var particle_b = particles[index_b];
+        let dir = particle_b.p - particle_a.p;
+        beam.last_length = length(dir);
+        beams[index] = beam;
+        // atomically write particles
+    }
 
     workgroupBarrier();
 
     // particle sim
-    var particle = particles[index];
-    // apply gravity
-    particle.a.y -= metadata.gravity;
-    // border collisions (very simple)
-    let clamped_pos = clamp(particle.p, vec2<f32>(particle_radius, particle_radius), vec2<f32>(f32(grid_size) - particle_radius, f32(grid_size) - particle_radius));
-    if (particle.p.x != clamped_pos.x) {
-        particle.a.y -= sign(particle.v.y) * border_friction * abs(particle.v.x) * (1 + border_elasticity);
-        particle.v.x *= -border_elasticity;
+    if (mapping_index < metadata.particle_i_c) {
+        let index = getMappedIndex(mapping_index);
+        var particle = particles[index];
+        // apply gravity
+        particle.a.y -= metadata.gravity;
+        // border collisions (very simple)
+        let clamped_pos = clamp(particle.p, vec2<f32>(particle_radius, particle_radius), vec2<f32>(f32(grid_size) - particle_radius, f32(grid_size) - particle_radius));
+        if (particle.p.x != clamped_pos.x) {
+            particle.a.y -= sign(particle.v.y) * border_friction * abs(particle.v.x) * (1 + border_elasticity);
+            particle.v.x *= -border_elasticity;
+        }
+        if (particle.p.y != clamped_pos.y) {
+            particle.a.x -= sign(particle.v.x) * border_friction * abs(particle.v.y) * (1 + border_elasticity);
+            particle.v.y *= -border_elasticity;
+        }
+        particle.p = clamped_pos;
+        // collide with other particles
+        // apply acceleration and velocity (all particles have mass 1)
+        particle.v += particle.a * time_step;
+        particle.p += particle.v * time_step;
+        particle.a = vec2<f32>(0.0, 0.0);
+        particles[index] = particle;
     }
-    if (particle.p.y != clamped_pos.y) {
-        particle.a.x -= sign(particle.v.x) * border_friction * abs(particle.v.y) * (1 + border_elasticity);
-        particle.v.y *= -border_elasticity;
-    }
-    particle.p = clamped_pos;
-    // apply acceleration and velocity (all particles have mass 1)
-    particle.v += particle.a * time_step;
-    particle.p += particle.v * time_step;
-    particle.a = vec2<f32>(0.0, 0.0);
-    particles[index] = particle;
 
     workgroupBarrier();
 
