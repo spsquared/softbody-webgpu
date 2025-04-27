@@ -414,17 +414,13 @@ class WGPUSoftbodyEngineWorker {
         // TESTING CODE
         const bufferMapper = await this.bufferMapper;
         bufferMapper.load();
-        bufferMapper.addParticle(new Particle(0, new Vector2D(500, 500), new Vector2D(-5, 10)))
-        bufferMapper.addParticle(new Particle(1, new Vector2D(400, 500), new Vector2D(-10, 10)))
-        bufferMapper.addParticle(new Particle(2, new Vector2D(400, 500), new Vector2D(20, 1)))
-        bufferMapper.addParticle(new Particle(3, new Vector2D(400, 500), new Vector2D(34, 23)))
-        bufferMapper.addParticle(new Particle(4, new Vector2D(400, 500), new Vector2D(5, 4)))
-        bufferMapper.addParticle(new Particle(5, new Vector2D(400, 500), new Vector2D(-3, 34)))
-        bufferMapper.addParticle(new Particle(6, new Vector2D(10, 10), new Vector2D(15, 0)))
-        bufferMapper.addParticle(new Particle(7, new Vector2D(10, 10), new Vector2D(1, 1)))
-        bufferMapper.addParticle(new Particle(8, new Vector2D(10, 10), new Vector2D(1, 1)))
-        bufferMapper.addBeam(new Beam(0, 0, 1, 100, 100, 1))
-        bufferMapper.addBeam(new Beam(1, 2, 3, 30, 100, 1))
+        bufferMapper.addParticle(new Particle(0, new Vector2D(500, 500), new Vector2D(0, -10)))
+        bufferMapper.addParticle(new Particle(1, new Vector2D(400, 500), new Vector2D(0, 10)))
+        bufferMapper.addParticle(new Particle(2, new Vector2D(400, 200), new Vector2D(-20, 0)))
+        bufferMapper.addParticle(new Particle(3, new Vector2D(300, 200), new Vector2D(30, 0)))
+        bufferMapper.addBeam(new Beam(0, 0, 1, 100, 1, 1))
+        bufferMapper.addBeam(new Beam(1, 2, 3, 100, 1, 1))
+        bufferMapper.addBeam(new Beam(2, 1, 2, 100, 1, 1))
         bufferMapper.meta.gravity = 1;
         bufferMapper.save();
         // bufferMapper.meta.particleCount = bufferMapper.maxParticles;

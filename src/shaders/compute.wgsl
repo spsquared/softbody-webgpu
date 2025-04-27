@@ -66,15 +66,19 @@ fn compute_main(thread: ComputeParams) {
     if (mapping_index < metadata.beam_i_c) {
         let index = getMappedIndex(metadata.max_particles + mapping_index);
         var beam = beams[index];
-        // read particles normally
         let index_a = extractBits(beam.particle_pair, 0, 16);
         let index_b = extractBits(beam.particle_pair, 16, 16);
         var particle_a = particles[index_a];
         var particle_b = particles[index_b];
-        let dir = particle_b.p - particle_a.p;
-        beam.last_length = length(dir);
+        let diff = particle_b.p - particle_a.p - vec2<f32>(0.0, 1e-10); // prevent divide by 0 in normalize
+        let len = length(diff);
+        // (ideal - current) * spring + (last - current) * damp
+        let force = ((beam.target_length - len) * beam.damp + (beam.last_length - len) * beam.spring) * normalize(diff);
+        beam.last_length = len;
         beams[index] = beam;
-        // atomically write particles
+        // oh no
+        particles[index_a].a -= force;
+        particles[index_b].a += force;
     }
 
     workgroupBarrier();
@@ -89,11 +93,11 @@ fn compute_main(thread: ComputeParams) {
         let clamped_pos = clamp(particle.p, vec2<f32>(particle_radius, particle_radius), vec2<f32>(f32(grid_size) - particle_radius, f32(grid_size) - particle_radius));
         if (particle.p.x != clamped_pos.x) {
             particle.a.y -= sign(particle.v.y) * border_friction * abs(particle.v.x) * (1 + border_elasticity);
-            particle.v.x *= -border_elasticity;
+            particle.v.x *= - border_elasticity;
         }
         if (particle.p.y != clamped_pos.y) {
             particle.a.x -= sign(particle.v.x) * border_friction * abs(particle.v.y) * (1 + border_elasticity);
-            particle.v.y *= -border_elasticity;
+            particle.v.y *= - border_elasticity;
         }
         particle.p = clamped_pos;
         // collide with other particles
