@@ -23,6 +23,8 @@ class WGPUSoftbodyEngineWorker {
     private readonly gridSize: number = 1000;
     private readonly particleRadius: number = 10;
     private readonly subticks: number = 10;
+    private readonly borderElasticity: number = 0.9;
+    private readonly borderFriction: number = 0.2;
 
     private readonly numWorkgroups = 64;
 
@@ -237,7 +239,9 @@ class WGPUSoftbodyEngineWorker {
                         constants: {
                             grid_size: this.gridSize,
                             particle_radius: this.particleRadius,
-                            time_step: 1 / this.subticks
+                            time_step: 1 / this.subticks,
+                            border_elasticity: this.borderElasticity,
+                            border_friction: this.borderFriction
                         }
                     }
                 }),
@@ -410,18 +414,19 @@ class WGPUSoftbodyEngineWorker {
         const bufferMapper = await this.bufferMapper;
         bufferMapper.load();
         bufferMapper.addParticle(new Particle(0, new Vector2D(500, 500), new Vector2D(-5, 10)))
-        bufferMapper.addParticle(new Particle(1, new Vector2D(400, 500), new Vector2D(0, 10)))
-        bufferMapper.addParticle(new Particle(1, new Vector2D(400, 500), new Vector2D(0, 1)))
-        bufferMapper.addParticle(new Particle(1, new Vector2D(400, 500), new Vector2D(0, 23)))
-        bufferMapper.addParticle(new Particle(1, new Vector2D(400, 500), new Vector2D(0, 4)))
-        bufferMapper.addParticle(new Particle(1, new Vector2D(400, 500), new Vector2D(0, 34)))
+        bufferMapper.addParticle(new Particle(1, new Vector2D(400, 500), new Vector2D(-10, 10)))
+        // bufferMapper.addParticle(new Particle(2, new Vector2D(400, 500), new Vector2D(20, 1)))
+        // bufferMapper.addParticle(new Particle(3, new Vector2D(400, 500), new Vector2D(34, 23)))
+        // bufferMapper.addParticle(new Particle(4, new Vector2D(400, 500), new Vector2D(5, 4)))
+        // bufferMapper.addParticle(new Particle(5, new Vector2D(400, 500), new Vector2D(-3, 34)))
+        bufferMapper.addParticle(new Particle(6, new Vector2D(10, 10), new Vector2D(15, 0)))
         // bufferMapper.addParticle(new Particle(2, new Vector2D(10, 10), new Vector2D(1, 1)))
         // bufferMapper.addParticle(new Particle(3, new Vector2D(10, 10), new Vector2D(1, 1)))
-        bufferMapper.addBeam(new Beam(0, 0, 1, 100, 100, 1))
+        bufferMapper.addBeam(new Beam(0, 1, 1, 100, 100, 1))
         bufferMapper.meta.gravity = 1;
         bufferMapper.save();
-        bufferMapper.meta.particleCount = bufferMapper.maxParticles;
-        bufferMapper.meta.beamCount = bufferMapper.maxParticles;
+        // bufferMapper.meta.particleCount = bufferMapper.maxParticles;
+        // bufferMapper.meta.beamCount = bufferMapper.maxParticles;
         await this.writeBuffers();
         // STILL TESTING CODE
         // STILL TESTING CODE

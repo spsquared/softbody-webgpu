@@ -2,6 +2,9 @@ override grid_size: u32;
 override particle_radius: f32;
 override time_step: f32;
 
+override border_elasticity: f32;
+override border_friction: f32;
+
 struct ComputeParams {
     @builtin(global_invocation_id) global_invocation_id: vec3<u32>
 }
@@ -50,9 +53,6 @@ var<uniform> metadata: Metadata;
 
 @compute @workgroup_size(64, 1, 1)
 fn compute_main(thread: ComputeParams) {
-    let dsf = particle_radius;
-    let d = grid_size;
-
     // index to search in mapping buffer sections (y/z dims not used)
     let index = thread.global_invocation_id.x;
 
@@ -69,8 +69,8 @@ fn compute_main(thread: ComputeParams) {
     // atomically write particles
 
     // borky temp test code
-    particles[index_a].v += dir * beam.spring;
-    particles[index_b].v -= dir * beam.spring;
+    particles[index_a].a -= dir * beam.spring;
+    particles[index_b].a += dir * beam.spring;
 
     workgroupBarrier();
 
@@ -78,6 +78,20 @@ fn compute_main(thread: ComputeParams) {
     var particle = particles[index];
     // apply gravity
     particle.a.y -= metadata.gravity;
+    // border collisions (very simple)
+    let clamped_pos = clamp(particle.p, vec2<f32>(particle_radius, particle_radius), vec2<f32>(f32(grid_size) - particle_radius, f32(grid_size) - particle_radius));
+    if (particle.p.x != clamped_pos.x) {
+        particle.v.x *= -border_elasticity;
+    }
+    if (particle.p.y != clamped_pos.y) {
+        particle.v.y *= -border_elasticity;
+        particle.v.x -= sign(particle.v.x) * border_friction * abs(particle.v.y) * (1 + border_elasticity) / time_step;
+        // dv = v.y + (v.y * elasticity) = v.y * (1 + elasticity)
+        // F_N * dt = m * dv
+        // F_N = dv / dt
+        // F_k = mu * F_N = mu * dv / dt
+    }
+    particle.p = clamped_pos;
     // apply acceleration and velocity (all particles have mass 1)
     particle.v += particle.a * time_step;
     particle.p += particle.v * time_step;
