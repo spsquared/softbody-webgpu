@@ -296,10 +296,6 @@ export class BufferMapper {
         this.meta = new Metadata(this.metadata, this.maxParticles);
     }
 
-    // reading buffers will require a cpu readback to update buffers (very bad!!!)
-    // load() reads all the buffer data
-    // save() overwrites all the buffer data, and ignores ids
-
     load(): void {
         this.particles.clear();
         this.beams.clear();
@@ -318,11 +314,15 @@ export class BufferMapper {
         for (let i = 0; i < beams.length; i++) beams[i].to(this.beamData, this.mapping, i, this.maxParticles);
     }
 
-    addParticle(p: Particle): void {
+    addParticle(p: Particle): boolean {
+        if (this.particles.size == this.maxParticles) return false;
         this.particles.add(p);
+        return true;
     }
-    addBeam(b: Beam): void {
+    addBeam(b: Beam): boolean {
+        if (this.beams.size == this.maxParticles) return false;
         this.beams.add(b);
+        return true;
     }
     removeParticle(p: Particle): boolean {
         return this.particles.delete(p);

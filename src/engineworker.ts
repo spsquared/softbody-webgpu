@@ -22,9 +22,11 @@ class WGPUSoftbodyEngineWorker {
 
     private readonly gridSize: number = 1000;
     private readonly particleRadius: number = 10;
-    private readonly subticks: number = 32;
+    private readonly subticks: number = 1;
     private readonly borderElasticity: number = 0.9;
     private readonly borderFriction: number = 0.2;
+    private readonly elasticity: number = 0.9;
+    private readonly friction: number = 0.1;
 
     private readonly workgroupSize = 64;
 
@@ -39,6 +41,7 @@ class WGPUSoftbodyEngineWorker {
         readonly beams: GPUBuffer
         readonly mapping: GPUBuffer
         readonly metadata: GPUBuffer
+        readonly beamForces: GPUBuffer
     }>;
     private readonly bindGroups: Promise<{
         readonly compute: BindGroupPair
@@ -120,12 +123,17 @@ class WGPUSoftbodyEngineWorker {
                 mapping: device.createBuffer({
                     label: 'Mapping buffer',
                     size: mapper.mapping.byteLength,
-                    usage: GPUBufferUsage.STORAGE | GPUBufferUsage.INDEX | GPUBufferUsage.COPY_SRC | GPUBufferUsage.COPY_DST
+                    usage: GPUBufferUsage.STORAGE | GPUBufferUsage.COPY_SRC | GPUBufferUsage.COPY_DST
                 }),
                 metadata: device.createBuffer({
                     label: 'Metadata buffer',
                     size: mapper.metadata.byteLength,
                     usage: GPUBufferUsage.UNIFORM | GPUBufferUsage.INDIRECT | GPUBufferUsage.COPY_SRC | GPUBufferUsage.COPY_DST
+                }),
+                beamForces: device.createBuffer({
+                    label: 'Totally necessary beam forces buffer',
+                    size: mapper.maxParticles * 8,
+                    usage: GPUBufferUsage.STORAGE
                 })
             });
         });
@@ -153,6 +161,11 @@ class WGPUSoftbodyEngineWorker {
                         binding: 3,
                         visibility: GPUShaderStage.COMPUTE,
                         buffer: { type: 'uniform' }
+                    },
+                    {
+                        binding: 4,
+                        visibility: GPUShaderStage.COMPUTE,
+                        buffer: { type: 'storage' }
                     }
                 ]
             });
@@ -198,6 +211,13 @@ class WGPUSoftbodyEngineWorker {
                                 resource: {
                                     label: 'Metadata buffer binding',
                                     buffer: buffers.metadata
+                                }
+                            },
+                            {
+                                binding: 4,
+                                resource: {
+                                    label: 'Totally necessary beam forces buffer binding',
+                                    buffer: buffers.beamForces
                                 }
                             }
                         ]
@@ -414,12 +434,21 @@ class WGPUSoftbodyEngineWorker {
         // TESTING CODE
         const bufferMapper = await this.bufferMapper;
         bufferMapper.load();
-        bufferMapper.addParticle(new Particle(0, new Vector2D(500, 500), new Vector2D(0, -10)))
-        bufferMapper.addParticle(new Particle(1, new Vector2D(400, 500), new Vector2D(0, 10)))
-        bufferMapper.addParticle(new Particle(2, new Vector2D(400, 200), new Vector2D(-20, 0)))
-        bufferMapper.addParticle(new Particle(3, new Vector2D(300, 200), new Vector2D(30, 0)))
-        bufferMapper.addBeam(new Beam(0, 0, 1, 100, 1, 1))
-        bufferMapper.addBeam(new Beam(1, 2, 3, 100, 1, 1))
+        let i = 0;
+        // bufferMapper.addParticle(new Particle(i++, new Vector2D(500, 500), new Vector2D(0, -10)))
+        // bufferMapper.addParticle(new Particle(i++, new Vector2D(400, 500), new Vector2D(0, 10)))
+        // bufferMapper.addParticle(new Particle(i++, new Vector2D(400, 200), new Vector2D(0, -10)))
+        // bufferMapper.addParticle(new Particle(i++, new Vector2D(300, 200), new Vector2D(0, 10)))
+        bufferMapper.addParticle(new Particle(i++, new Vector2D(0, 100), new Vector2D(0, 10)))
+        bufferMapper.addParticle(new Particle(i++, new Vector2D(150, 100), new Vector2D(0, 0)))
+        bufferMapper.addParticle(new Particle(i++, new Vector2D(500, 100), new Vector2D(0, 0)))
+        bufferMapper.addParticle(new Particle(i++, new Vector2D(500, 200), new Vector2D(0, 0)))
+        bufferMapper.addParticle(new Particle(i++, new Vector2D(500, 300), new Vector2D(0, 0)))
+        for (; i < 50;) {
+            bufferMapper.addParticle(new Particle(i++, new Vector2D(Math.random() * this.gridSize, Math.random() * this.gridSize), new Vector2D(Math.random() * 20 - 10, Math.random() * 20 - 10)))
+        }
+        bufferMapper.addBeam(new Beam(0, 0, 1, 100, 1, 2))
+        bufferMapper.addBeam(new Beam(1, 2, 3, 100, 1, 2))
         bufferMapper.addBeam(new Beam(2, 1, 2, 100, 1, 1))
         bufferMapper.meta.gravity = 1;
         bufferMapper.save();

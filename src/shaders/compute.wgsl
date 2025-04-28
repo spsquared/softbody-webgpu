@@ -1,9 +1,14 @@
-override grid_size: u32;
+override grid_size: f32;
 override particle_radius: f32;
 override time_step: f32;
 
 override border_elasticity: f32;
 override border_friction: f32;
+
+@must_use
+fn cross2(u: vec2<f32>, v: vec2<f32>) -> f32 {
+    return u.x * v.y - u.y * v.x;
+}
 
 struct ComputeParams {
     @builtin(global_invocation_id) global_invocation_id: vec3<u32>
@@ -51,6 +56,11 @@ var<storage, read> mappings: array<u32>;
 @group(0) @binding(3)
 var<uniform> metadata: Metadata;
 
+// super memory efficient very much yes
+@group(0) @binding(4)
+var<storage, read_write> beam_forces: array<atomic<i32>>;
+const beam_force_scale: f32 = 65536;
+
 // once again wgpu not having u16 is annoying
 @must_use
 fn getMappedIndex(id: u32) -> u32 {
@@ -70,18 +80,22 @@ fn compute_main(thread: ComputeParams) {
         let index_b = extractBits(beam.particle_pair, 16, 16);
         var particle_a = particles[index_a];
         var particle_b = particles[index_b];
-        let diff = particle_b.p - particle_a.p - vec2<f32>(0.0, 1e-10); // prevent divide by 0 in normalize
+        var diff = particle_b.p - particle_a.p;
+        if (length(diff) == 0) {
+            // prevent divide by 0 in normalize
+            diff = vec2<f32>(0.0, - 1.0e-10);
+        }
         let len = length(diff);
         // (ideal - current) * spring + (last - current) * damp
-        let force = ((beam.target_length - len) * beam.damp + (beam.last_length - len) * beam.spring) * normalize(diff);
+        let force = ((beam.target_length - len) * beam.spring + (beam.last_length - len) * beam.damp) * normalize(diff);
         beam.last_length = len;
         beams[index] = beam;
-        // oh no
-        particles[index_a].a -= force;
-        particles[index_b].a += force;
+        // atomics to add forces
+        atomicAdd(&beam_forces[index_a * 2], i32(- force.x * beam_force_scale));
+        atomicAdd(&beam_forces[index_a * 2 + 1], i32(- force.y * beam_force_scale));
+        atomicAdd(&beam_forces[index_b * 2], i32(force.x * beam_force_scale));
+        atomicAdd(&beam_forces[index_b * 2 + 1], i32(force.y * beam_force_scale));
     }
-
-    workgroupBarrier();
 
     // particle sim
     if (mapping_index < metadata.particle_i_c) {
@@ -100,15 +114,32 @@ fn compute_main(thread: ComputeParams) {
             particle.v.y *= - border_elasticity;
         }
         particle.p = clamped_pos;
-        // collide with other particles
-        // apply acceleration and velocity (all particles have mass 1)
+        // collide with other particles (naive solution)
+        for (var o_map_index: u32 = 0; o_map_index < metadata.particle_i_c; o_map_index++) {
+            if (o_map_index == mapping_index) {
+                continue;
+            }
+            var other = particles[getMappedIndex(o_map_index)];
+            let dist = distance(other.p, particle.p);
+            if (dist <= particle_radius && dist > 0) {
+                // collision normal
+                let normal = normalize(particle.p - other.p);
+                // dot relative velocity with normal to get relative speed, then multiply with normal
+                particle.v -= dot(normal, particle.v - other.v) * normal;
+            }
+        }
+        // apply acceleration and velocity
+        let beam_force_index = index * 2;
+        particle.a.x += f32(atomicExchange(&beam_forces[beam_force_index], 0)) / beam_force_scale;
+        particle.a.y += f32(atomicExchange(&beam_forces[beam_force_index + 1], 0)) / beam_force_scale;
         particle.v += particle.a * time_step;
         particle.p += particle.v * time_step;
         particle.a = vec2<f32>(0.0, 0.0);
         particles[index] = particle;
     }
-
-    workgroupBarrier();
+    else {
+        particles[getMappedIndex(mapping_index)].p.x = - 1.0e10;
+    }
 
     // particle "delete"
 
