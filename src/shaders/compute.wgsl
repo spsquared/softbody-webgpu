@@ -4,6 +4,8 @@ override time_step: f32;
 
 override border_elasticity: f32;
 override border_friction: f32;
+override elasticity: f32;
+override friction: f32;
 
 @must_use
 fn cross2(u: vec2<f32>, v: vec2<f32>) -> f32 {
@@ -115,6 +117,7 @@ fn compute_main(thread: ComputeParams) {
         }
         particle.p = clamped_pos;
         // collide with other particles (naive solution)
+        let elasticity_coeff = (elasticity + 1) / 2;
         for (var o_map_index: u32 = 0; o_map_index < metadata.particle_i_c; o_map_index++) {
             if (o_map_index == mapping_index) {
                 continue;
@@ -122,10 +125,9 @@ fn compute_main(thread: ComputeParams) {
             var other = particles[getMappedIndex(o_map_index)];
             let dist = distance(other.p, particle.p);
             if (dist <= particle_radius && dist > 0) {
-                // collision normal
-                let normal = normalize(particle.p - other.p);
-                // dot relative velocity with normal to get relative speed, then multiply with normal
-                particle.v -= dot(normal, particle.v - other.v) * normal;
+                let norm = normalize(other.p - particle.p);
+                let impulse = elasticity_coeff * dot(particle.v - other.v, norm);
+                particle.v -= impulse * norm;
             }
         }
         // apply acceleration and velocity
@@ -137,10 +139,5 @@ fn compute_main(thread: ComputeParams) {
         particle.a = vec2<f32>(0.0, 0.0);
         particles[index] = particle;
     }
-    else {
-        particles[getMappedIndex(mapping_index)].p.x = - 1.0e10;
-    }
-
-    // particle "delete"
-
+    // delete particles
 }
