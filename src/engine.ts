@@ -1,3 +1,9 @@
+import { Vector2D } from "./engineMapping";
+
+export enum WGPUSoftbodyEngineMessageTypes {
+    INPUT
+}
+
 export class WGPUSoftbodyEngine {
     readonly resolution: number;
     readonly canvas: HTMLCanvasElement;
@@ -32,5 +38,16 @@ export class WGPUSoftbodyEngine {
                 else setTimeout(resolve, 200);
             });
         }
+    }
+
+    private postMessage(type: WGPUSoftbodyEngineMessageTypes, data: any) {
+        this.worker.postMessage({
+            type: type,
+            data: data
+        });
+    }
+
+    setUserInput(appliedForce: Vector2D, mousePos: Vector2D, mouseActive: boolean): void {
+        this.postMessage(WGPUSoftbodyEngineMessageTypes.INPUT, [appliedForce, mousePos, mouseActive]);
     }
 }

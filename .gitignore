@@ -13,3 +13,7 @@ node_modules/
 # environment variables
 *.env
 *.env.production
+
+# firebase moment
+.firebaserc
+firebase.json

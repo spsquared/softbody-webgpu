@@ -1,5 +1,6 @@
 /// <reference types="@webgpu/types" />                                                                                                                                                        
 
+import { WGPUSoftbodyEngineMessageTypes } from './engine';
 import { Beam, BufferMapper, Particle, Vector2D } from './engineMapping';
 
 type BindGroupPair = { readonly layout: GPUBindGroupLayout, readonly group: GPUBindGroup };
@@ -39,10 +40,10 @@ class WGPUSoftbodyEngineWorker {
 
     private readonly bufferMapper: Promise<BufferMapper>;
     private readonly buffers: Promise<{
+        readonly metadata: GPUBuffer
         readonly particles: GPUBuffer
         readonly beams: GPUBuffer
         readonly mapping: GPUBuffer
-        readonly metadata: GPUBuffer
         readonly beamForces: GPUBuffer
     }>;
     private readonly bindGroups: Promise<{
@@ -112,6 +113,11 @@ class WGPUSoftbodyEngineWorker {
             const device = await this.device;
             const mapper = await this.bufferMapper;
             resolve({
+                metadata: device.createBuffer({
+                    label: 'Metadata buffer',
+                    size: mapper.metadata.byteLength,
+                    usage: GPUBufferUsage.STORAGE | GPUBufferUsage.INDIRECT | GPUBufferUsage.COPY_SRC | GPUBufferUsage.COPY_DST
+                }),
                 particles: device.createBuffer({
                     label: 'Particle data buffer',
                     size: mapper.particleData.byteLength,
@@ -126,11 +132,6 @@ class WGPUSoftbodyEngineWorker {
                     label: 'Mapping buffer',
                     size: mapper.mapping.byteLength,
                     usage: GPUBufferUsage.STORAGE | GPUBufferUsage.INDEX | GPUBufferUsage.COPY_SRC | GPUBufferUsage.COPY_DST
-                }),
-                metadata: device.createBuffer({
-                    label: 'Metadata buffer',
-                    size: mapper.metadata.byteLength,
-                    usage: GPUBufferUsage.UNIFORM | GPUBufferUsage.INDIRECT | GPUBufferUsage.COPY_SRC | GPUBufferUsage.COPY_DST
                 }),
                 beamForces: device.createBuffer({
                     label: 'Totally necessary beam forces buffer',
@@ -157,12 +158,12 @@ class WGPUSoftbodyEngineWorker {
                     {
                         binding: 2,
                         visibility: GPUShaderStage.COMPUTE,
-                        buffer: { type: 'read-only-storage' }
+                        buffer: { type: 'storage' }
                     },
                     {
                         binding: 3,
                         visibility: GPUShaderStage.COMPUTE,
-                        buffer: { type: 'uniform' }
+                        buffer: { type: 'storage' }
                     },
                     {
                         binding: 4,
@@ -190,29 +191,29 @@ class WGPUSoftbodyEngineWorker {
                             {
                                 binding: 0,
                                 resource: {
+                                    label: 'Metadata buffer binding',
+                                    buffer: buffers.metadata
+                                }
+                            },
+                            {
+                                binding: 1,
+                                resource: {
                                     label: 'Particle buffer binding',
                                     buffer: buffers.particles
                                 }
                             },
                             {
-                                binding: 1,
+                                binding: 2,
                                 resource: {
                                     label: 'Beam buffer binding',
                                     buffer: buffers.beams
                                 }
                             },
                             {
-                                binding: 2,
+                                binding: 3,
                                 resource: {
                                     label: 'Mapping buffer binding',
                                     buffer: buffers.mapping
-                                }
-                            },
-                            {
-                                binding: 3,
-                                resource: {
-                                    label: 'Metadata buffer binding',
-                                    buffer: buffers.metadata
                                 }
                             },
                             {
@@ -234,7 +235,7 @@ class WGPUSoftbodyEngineWorker {
                             {
                                 binding: 1,
                                 resource: {
-                                    label: 'Beam buffer binding',
+                                    label: 'Particle buffer binding',
                                     buffer: buffers.particles
                                 }
                             }
@@ -369,10 +370,24 @@ class WGPUSoftbodyEngineWorker {
             });
         });
         self.addEventListener('message', (e) => {
-
+            switch (e.data.type) {
+                case WGPUSoftbodyEngineMessageTypes.INPUT:
+                    this.userInput.appliedForce = Vector2D.fromObject(e.data.data[0]);
+                    this.userInput.mousePos = Vector2D.fromObject(e.data.data[1]);
+                    this.userInput.mouseActive = e.data.data[2];
+                    break;
+            }
         });
         this.beginDraw();
     }
+
+    private readonly userInput = {
+        appliedForce: new Vector2D(0, 0),
+        mousePos: new Vector2D(0, 0),
+        lastMouse: new Vector2D(0, 0),
+        mouseActive: false,
+        lastFrame: performance.now()
+    };
 
     private async frame(): Promise<void> {
         const device = await this.device;
@@ -380,7 +395,20 @@ class WGPUSoftbodyEngineWorker {
         const bufferMapper = await this.bufferMapper;
         const bindGroups = await this.bindGroups;
         const pipelines = await this.pipelines;
+        // inputs
+        const frameStart = performance.now();
+        bufferMapper.meta.setUserInput(
+            this.userInput.appliedForce,
+            this.userInput.mousePos.mult(this.gridSize),
+            this.userInput.mousePos.sub(this.userInput.lastMouse).mult(this.currentFps * (frameStart - this.userInput.lastFrame) / 1000 * this.gridSize),
+            this.userInput.mouseActive
+        );
+        bufferMapper.meta.writeUserInput(device.queue, buffers.metadata);
+        this.userInput.lastMouse = this.userInput.mousePos;
+        this.userInput.lastFrame = frameStart;
+        // compute pass then render pass with 2 draw calls
         const encoder = device.createCommandEncoder();
+        // multiple subticks help stabilize and make simulation more accurate
         const computePass = encoder.beginComputePass({
             label: 'Engine compute pass'
         });
@@ -398,6 +426,7 @@ class WGPUSoftbodyEngineWorker {
                 clearValue: { r: 0, g: 0, b: 0, a: this.blur }
             }]
         });
+        // TODO: fix drawing bugs after particles are deleted - index buffer is borked
         renderPass.setPipeline(pipelines.renderParticles);
         renderPass.setVertexBuffer(0, buffers.particles);
         // renderPass.setIndexBuffer(buffers.mapping, 'uint16', 0, bufferMapper.maxParticles * 2);
@@ -410,7 +439,9 @@ class WGPUSoftbodyEngineWorker {
         // renderPass.drawIndexedIndirect(buffers.metadata, 20);
         renderPass.drawIndirect(buffers.metadata, 20);
         renderPass.end();
+        // submit
         device.queue.submit([encoder.finish()]);
+        // framerate stuff
         const now = performance.now();
         this.frameTimes.push(now);
         while (this.frameTimes[0] + 1000 < now) this.frameTimes.shift();
@@ -446,29 +477,45 @@ class WGPUSoftbodyEngineWorker {
         bufferMapper.load();
         let i = 0, j = 0;
         // beam tests
-        bufferMapper.addParticle(new Particle(i++, new Vector2D(500, 600), new Vector2D(0, 10)))
-        bufferMapper.addParticle(new Particle(i++, new Vector2D(400, 600), new Vector2D(0, 20)))
-        bufferMapper.addParticle(new Particle(i++, new Vector2D(400, 800), new Vector2D(10, 10)))
-        bufferMapper.addParticle(new Particle(i++, new Vector2D(300, 800), new Vector2D(-10, 30)))
-        bufferMapper.addBeam(new Beam(j++, 0, 1, 100, 1, 2))
-        bufferMapper.addBeam(new Beam(j++, 2, 3, 100, 1, 2))
+        bufferMapper.addParticle(new Particle(i++, new Vector2D(400, 600), new Vector2D(0, 10)));
+        bufferMapper.addParticle(new Particle(i++, new Vector2D(300, 600), new Vector2D(0, 20)));
+        bufferMapper.addParticle(new Particle(i++, new Vector2D(300, 800), new Vector2D(10, 10)));
+        bufferMapper.addParticle(new Particle(i++, new Vector2D(200, 800), new Vector2D(-10, 30)));
+        bufferMapper.addBeam(new Beam(j++, 0, 1, 100, 1, 2));
+        bufferMapper.addBeam(new Beam(j++, 2, 3, 100, 1, 2));
         // collision tests
-        bufferMapper.addParticle(new Particle(i++, new Vector2D(500, 300), new Vector2D(0, 0)))
-        bufferMapper.addParticle(new Particle(i++, new Vector2D(518, 400), new Vector2D(0, 0)))
-        bufferMapper.addParticle(new Particle(i++, new Vector2D(100, 500), new Vector2D(1, 0)))
-        bufferMapper.addParticle(new Particle(i++, new Vector2D(140, 500), new Vector2D(-1, 0)))
-        // more beams
+        bufferMapper.addParticle(new Particle(i++, new Vector2D(300, 300), new Vector2D(0, 0)));
+        bufferMapper.addParticle(new Particle(i++, new Vector2D(318, 400), new Vector2D(0, 0)));
+        bufferMapper.addParticle(new Particle(i++, new Vector2D(100, 500), new Vector2D(1, 0)));
+        bufferMapper.addParticle(new Particle(i++, new Vector2D(140, 500), new Vector2D(-1, 0)));
+        // CUBE (its a square lol)
         let a = i;
-        bufferMapper.addParticle(new Particle(i++, new Vector2D(800, 800), new Vector2D(0, 0)))
-        bufferMapper.addParticle(new Particle(i++, new Vector2D(900, 800), new Vector2D(0, 0)))
-        bufferMapper.addParticle(new Particle(i++, new Vector2D(800, 900), new Vector2D(0, 0)))
-        bufferMapper.addParticle(new Particle(i++, new Vector2D(900, 900), new Vector2D(-10, 10)))
+        bufferMapper.addParticle(new Particle(i++, new Vector2D(800, 800), new Vector2D(0, 0)));
+        bufferMapper.addParticle(new Particle(i++, new Vector2D(900, 800), new Vector2D(0, 0)));
+        bufferMapper.addParticle(new Particle(i++, new Vector2D(800, 900), new Vector2D(0, 0)));
+        bufferMapper.addParticle(new Particle(i++, new Vector2D(900, 900), new Vector2D(-10, 10)));
         bufferMapper.addBeam(new Beam(j++, a, a + 1, 100, 1, 4));
         bufferMapper.addBeam(new Beam(j++, a + 2, a + 3, 100, 1, 4));
         bufferMapper.addBeam(new Beam(j++, a + 1, a + 3, 100, 1, 4));
         bufferMapper.addBeam(new Beam(j++, a + 0, a + 2, 100, 1, 4));
         bufferMapper.addBeam(new Beam(j++, a + 0, a + 3, Math.sqrt(2) * 100, 2, 1));
         bufferMapper.addBeam(new Beam(j++, a + 1, a + 2, Math.sqrt(2) * 100, 2, 1));
+        // BIG CUBE (still a square)
+        a = i;
+        const d = 40;
+        const s = 10;
+        const bs = 4;
+        const bd = 200;
+        for (let x = 0; x < s; x++) {
+            for (let y = 0; y < s; y++) {
+                let b = i;
+                bufferMapper.addParticle(new Particle(i++, new Vector2D(x * d + 500, y * d + 300)));
+                if (y < s - 1) bufferMapper.addBeam(new Beam(j++, b, b + 1, d, bs, bd));
+                if (x < s - 1) bufferMapper.addBeam(new Beam(j++, b, b + s, d, bs, bd));
+                if (y < s - 1 && x < s - 1) bufferMapper.addBeam(new Beam(j++, b, b + s + 1, Math.sqrt(2) * d, bs, bd));
+                if (y > 0 && x < s - 1) bufferMapper.addBeam(new Beam(j++, b, b + s - 1, Math.sqrt(2) * d, bs, bd));
+            }
+        }
         // spam
         // for (; i < 500;) {
         //     bufferMapper.addParticle(new Particle(i++, new Vector2D(Math.random() * this.gridSize, Math.random() * this.gridSize), new Vector2D(Math.random() * 20 - 10, Math.random() * 20 - 10)))
@@ -476,12 +523,6 @@ class WGPUSoftbodyEngineWorker {
         bufferMapper.meta.gravity = 0.5;
         bufferMapper.save();
         await this.writeBuffers();
-        // STILL TESTING CODE
-        // STILL TESTING CODE
-        // STILL TESTING CODE
-        // console.log(new Uint16Array(bufferMapper.mapping))
-        // console.log(new Float32Array(bufferMapper.particleData))
-        // console.log(new Float32Array(bufferMapper.beamData))
         while (true) {
             await new Promise<void>((resolve) => {
                 requestAnimationFrame(async () => {

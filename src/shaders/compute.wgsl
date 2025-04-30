@@ -45,20 +45,21 @@ struct Metadata {
     beam_f_i: u32,
     max_particles: u32,
     gravity: f32,
-    applied_force: vec2<f32>,
+    user_strength: f32,
+    mouse_active: u32,
     mouse_pos: vec2<f32>,
     mouse_vel: vec2<f32>,
-    mouse_active: u32
+    applied_force: vec2<f32>
 }
 
 @group(0) @binding(0)
-var<storage, read_write> particles: array<Particle>;
+var<storage, read_write> metadata: Metadata;
 @group(0) @binding(1)
-var<storage, read_write> beams: array<Beam>;
+var<storage, read_write> particles: array<Particle>;
 @group(0) @binding(2)
-var<storage, read> mappings: array<u32>;
+var<storage, read_write> beams: array<Beam>;
 @group(0) @binding(3)
-var<uniform> metadata: Metadata;
+var<storage, read_write> mappings: array<u32>;
 
 // super memory efficient very much yes
 @group(0) @binding(4)
@@ -119,7 +120,7 @@ fn compute_main(thread: ComputeParams) {
             }
             let other = particles[getMappedIndex(o_map_index)];
             let dist = length(other.p - particle.p);
-            if (dist <= particle_radius * 2 && dist > 0) {
+            if (dist < particle_radius * 2 && dist > 0) {
                 let normal = normalize(other.p - particle.p);
                 let tangent = vec2<f32>(-normal.y, normal.x);
                 let inv_rel_velocity = particle.v - other.v;
@@ -143,6 +144,11 @@ fn compute_main(thread: ComputeParams) {
             particle.v.y *= - border_elasticity;
         }
         particle.p = clamped_pos;
+        // user input forces
+        particle.a += metadata.applied_force * metadata.user_strength;
+        if (metadata.mouse_active > 0 && distance(metadata.mouse_pos, particle.p) < particle_radius * 10) {
+            particle.a += (metadata.mouse_vel - particle.v) * metadata.user_strength + vec2<f32>(0.0, metadata.gravity);
+        }
         // apply acceleration and velocity
         let beam_force_index = index * 2;
         particle.a.x += f32(atomicExchange(&beam_forces[beam_force_index], 0)) / beam_force_scale;

@@ -48,6 +48,10 @@ export class Vector2D {
         return this.x * o.y - this.y * o.x;
     }
 
+    toString(): string {
+        return `Vector2D<${this.x}, ${this.y}>`;
+    }
+
     static readonly zero: Vector2D = new Vector2D(0, 0);
     static readonly i: Vector2D = new Vector2D(1, 0);
     static readonly j: Vector2D = new Vector2D(0, 1);
@@ -59,6 +63,13 @@ export class Vector2D {
 
     static from(buffer: TypedArray, offset: number): Vector2D {
         return new Vector2D(buffer[offset], buffer[offset + 1]);
+    }
+
+    toObject(): { x: number, y: number } {
+        return { x: this.x, y: this.y };
+    }
+    static fromObject(obj: { x: number, y: number }): Vector2D {
+        return new Vector2D(obj.x, obj.y);
     }
 }
 
@@ -212,12 +223,13 @@ export class Metadata {
      * - Beam first instance - `u32`
      * - Max particles - `u32`
      * - Gravity - `f32`
-     * - User applied force - `vec2<f32>`
+     * - User strength - `f32`
+     * - Mouse active - `u32`
      * - Mouse position - `vec2<f32>`
      * - Mouse velocity - `vec2<f32>`
-     * - Mouse active - `u32`
+     * - User applied force - `vec2<f32>`
      */
-    static readonly byteLength = 84; // particle/beam = 40, game - 32
+    static readonly byteLength = 80; // particle/beam = 40, game - 40, (be careful with struct alignment)
 
     readonly buf: ArrayBuffer;
     private readonly uint32View: Uint32Array;
@@ -230,6 +242,7 @@ export class Metadata {
         this.uint32View[0] = 3;
         this.uint32View[5] = 2;
         this.uint32View[10] = maxParticles;
+        this.userStrength = 1;
     }
 
     get particleCount(): number {
@@ -253,11 +266,22 @@ export class Metadata {
         this.float32View[11] = g;
     }
 
+    get userStrength(): number {
+        return this.float32View[12];
+    }
+    set userStrength(p: number) {
+        this.float32View[12] = p;
+    }
+
     setUserInput(appliedForce: Vector2D, mousePos: Vector2D, mouseVel: Vector2D, mouseActive: boolean): void {
-        appliedForce.to(this.float32View, 12);
+        this.uint32View[13] = mouseActive ? 1 : 0;
         mousePos.to(this.float32View, 14);
         mouseVel.to(this.float32View, 16);
-        this.uint32View[18] = mouseActive ? 1 : 0;
+        appliedForce.to(this.float32View, 18);
+    }
+    writeUserInput(queue: GPUQueue, buffer: GPUBuffer) {
+        queue.writeBuffer(buffer, 48, this.buf, 48, 32);
+        // queue.writeBuffer(buffer, 0, this.buf, 0);
     }
 }
 
