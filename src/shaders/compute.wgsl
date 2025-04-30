@@ -120,14 +120,15 @@ fn compute_main(thread: ComputeParams) {
             let other = particles[getMappedIndex(o_map_index)];
             let dist = length(other.p - particle.p);
             if (dist <= particle_radius * 2 && dist > 0) {
-                let inv_rel_velocity = particle.v - other.v;
                 let normal = normalize(other.p - particle.p);
                 let tangent = vec2<f32>(-normal.y, normal.x);
+                let inv_rel_velocity = particle.v - other.v;
                 let impulse_normal = elasticity_coeff * dot(inv_rel_velocity, normal);
                 let impulse_tangent = clamp(dot(inv_rel_velocity, tangent), -impulse_normal * friction, impulse_normal * friction);
                 particle.v -= impulse_normal * normal + impulse_tangent * tangent;
-                // scuffed shifting
-                particle.p -= normal * (particle_radius - dist) / 2;
+                let clip_shift = normal * (particle_radius * 2 - dist) / 2;
+                particle.p -= clip_shift;
+                // particle.v -= clip_shift;
             }
         }
         // border collisions (very simple)
