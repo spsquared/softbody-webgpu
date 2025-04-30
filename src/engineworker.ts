@@ -452,10 +452,10 @@ class WGPUSoftbodyEngineWorker {
         bufferMapper.addParticle(new Particle(i++, new Vector2D(518, 400), new Vector2D(0, 0)))
         bufferMapper.addParticle(new Particle(i++, new Vector2D(100, 200), new Vector2D(1, 0)))
         bufferMapper.addParticle(new Particle(i++, new Vector2D(140, 200), new Vector2D(-1, 0)))
-        for (; i < 50;) {
+        for (; i < 500;) {
             bufferMapper.addParticle(new Particle(i++, new Vector2D(Math.random() * this.gridSize, Math.random() * this.gridSize), new Vector2D(Math.random() * 20 - 10, Math.random() * 20 - 10)))
         }
-        bufferMapper.meta.gravity = 1;
+        bufferMapper.meta.gravity = 0.1;
         bufferMapper.save();
         // bufferMapper.meta.particleCount = bufferMapper.maxParticles;
         // bufferMapper.meta.beamCount = bufferMapper.maxParticles;

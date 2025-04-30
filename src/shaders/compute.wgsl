@@ -126,9 +126,10 @@ fn compute_main(thread: ComputeParams) {
                 let impulse_normal = elasticity_coeff * dot(inv_rel_velocity, normal);
                 let impulse_tangent = clamp(dot(inv_rel_velocity, tangent), -impulse_normal * friction, impulse_normal * friction);
                 particle.v -= impulse_normal * normal + impulse_tangent * tangent;
+                // offset thing from verlet integration style collisions
                 let clip_shift = normal * (particle_radius * 2 - dist) / 2;
-                particle.p -= clip_shift;
-                // particle.v -= clip_shift;
+                // particle.p -= clip_shift;
+                particle.v -= clip_shift;
             }
         }
         // border collisions (very simple)
