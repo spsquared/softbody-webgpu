@@ -1,7 +1,8 @@
 import { Vector2D } from "./engineMapping";
 
 export enum WGPUSoftbodyEngineMessageTypes {
-    INPUT
+    INPUT,
+    VISIBILITY_CHANGE
 }
 
 export class WGPUSoftbodyEngine {
@@ -25,6 +26,8 @@ export class WGPUSoftbodyEngine {
         this.worker = new Worker(new URL('./engineWorker', import.meta.url), { type: 'module' });
         this.worker.postMessage(offscreen, [offscreen]);
         this.worker.addEventListener('error', (err) => { throw err.error; });
+        document.addEventListener('visibilitychange', () => this.postMessage(WGPUSoftbodyEngineMessageTypes.VISIBILITY_CHANGE, document.hidden));
+        this.postMessage(WGPUSoftbodyEngineMessageTypes.VISIBILITY_CHANGE, document.hidden);
         this.startDraw();
     }
 
@@ -35,7 +38,7 @@ export class WGPUSoftbodyEngine {
                     this.ctx.drawImage(this.simCanvas, 0, 0);
                     resolve();
                 });
-                else setTimeout(resolve, 200);
+                else setTimeout(resolve, 100);
             });
         }
     }

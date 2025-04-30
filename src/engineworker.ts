@@ -23,7 +23,7 @@ class WGPUSoftbodyEngineWorker {
 
     private readonly gridSize: number = 1000;
     private readonly particleRadius: number = 10;
-    private readonly subticks: number = 32;
+    private readonly subticks: number = 64;
     private readonly borderElasticity: number = 0.5;
     private readonly borderFriction: number = 0.2;
     private readonly elasticity: number = 0.5;
@@ -58,6 +58,7 @@ class WGPUSoftbodyEngineWorker {
 
     private readonly blur: number = 0.4;
 
+    private visible: boolean = true;
     private readonly frameTimes: number[] = [];
     private readonly fpsHistory: number[] = [];
 
@@ -376,6 +377,8 @@ class WGPUSoftbodyEngineWorker {
                     this.userInput.mousePos = Vector2D.fromObject(e.data.data[1]);
                     this.userInput.mouseActive = e.data.data[2];
                     break;
+                case WGPUSoftbodyEngineMessageTypes.VISIBILITY_CHANGE:
+                    this.visible = !e.data.data
             }
         });
         this.beginDraw();
@@ -504,8 +507,8 @@ class WGPUSoftbodyEngineWorker {
         a = i;
         const d = 40;
         const s = 10;
-        const bs = 4;
-        const bd = 200;
+        const bs = 10;
+        const bd = 700;
         for (let x = 0; x < s; x++) {
             for (let y = 0; y < s; y++) {
                 let b = i;
@@ -525,10 +528,11 @@ class WGPUSoftbodyEngineWorker {
         await this.writeBuffers();
         while (true) {
             await new Promise<void>((resolve) => {
-                requestAnimationFrame(async () => {
+                if (this.visible) requestAnimationFrame(async () => {
                     await this.frame();
                     resolve();
                 });
+                else setTimeout(() => resolve(), 100);
             });
         }
     }
