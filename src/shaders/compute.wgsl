@@ -108,7 +108,28 @@ fn compute_main(thread: ComputeParams) {
         // gravity
         particle.a.y -= metadata.gravity;
         // drag
-        particle.a -= drag_coeff * abs(pow(particle.v, vec2<f32>(drag_exp, drag_exp))) * normalize(particle.v);
+        if (length(particle.v) > 0) {
+            particle.a -= drag_coeff * abs(pow(particle.v, vec2<f32>(drag_exp, drag_exp))) * normalize(particle.v);
+        }
+        // collide with other particles (naive solution)
+        let elasticity_coeff = (elasticity + 1) / 2;
+        for (var o_map_index: u32 = 0; o_map_index < metadata.particle_i_c; o_map_index++) {
+            if (o_map_index == mapping_index) {
+                continue;
+            }
+            let other = particles[getMappedIndex(o_map_index)];
+            let dist = length(other.p - particle.p);
+            if (dist <= particle_radius * 2 && dist > 0) {
+                let inv_rel_velocity = particle.v - other.v;
+                let normal = normalize(other.p - particle.p);
+                let tangent = vec2<f32>(-normal.y, normal.x);
+                let impulse_normal = elasticity_coeff * dot(inv_rel_velocity, normal);
+                let impulse_tangent = clamp(dot(inv_rel_velocity, tangent), -impulse_normal * friction, impulse_normal * friction);
+                particle.v -= impulse_normal * normal + impulse_tangent * tangent;
+                // scuffed shifting
+                particle.p -= normal * (particle_radius - dist) / 2;
+            }
+        }
         // border collisions (very simple)
         let clamped_pos = clamp(particle.p, vec2<f32>(particle_radius, particle_radius), vec2<f32>(f32(grid_size) - particle_radius, f32(grid_size) - particle_radius));
         if (particle.p.x != clamped_pos.x) {
@@ -120,23 +141,6 @@ fn compute_main(thread: ComputeParams) {
             particle.v.y *= - border_elasticity;
         }
         particle.p = clamped_pos;
-        // collide with other particles (naive solution)
-        let elasticity_coeff = (elasticity + 1) / 2;
-        for (var o_map_index: u32 = 0; o_map_index < metadata.particle_i_c; o_map_index++) {
-            if (o_map_index == mapping_index) {
-                continue;
-            }
-            var other = particles[getMappedIndex(o_map_index)];
-            let dist = distance(other.p, particle.p);
-            if (dist <= particle_radius * 2 && dist > 0) {
-                let inv_rel_velocity = particle.v - other.v;
-                let normal = normalize(other.p - particle.p);
-                let tangent = vec2<f32>(-normal.y, normal.x);
-                let impulse_normal = elasticity_coeff * dot(inv_rel_velocity, normal);
-                let impulse_tangent = clamp(dot(inv_rel_velocity, tangent), -impulse_normal * friction, impulse_normal * friction);
-                particle.v -= impulse_normal * normal + impulse_tangent * tangent + normal * 0.1;
-            }
-        }
         // apply acceleration and velocity
         let beam_force_index = index * 2;
         particle.a.x += f32(atomicExchange(&beam_forces[beam_force_index], 0)) / beam_force_scale;

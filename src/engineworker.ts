@@ -22,10 +22,10 @@ class WGPUSoftbodyEngineWorker {
 
     private readonly gridSize: number = 1000;
     private readonly particleRadius: number = 10;
-    private readonly subticks: number = 64;
-    private readonly borderElasticity: number = 0.9;
+    private readonly subticks: number = 32;
+    private readonly borderElasticity: number = 0.5;
     private readonly borderFriction: number = 0.2;
-    private readonly elasticity: number = 0.9;
+    private readonly elasticity: number = 0.7;
     private readonly friction: number = 0.1;
     private readonly dragCoeff: number = 0.001;
     private readonly dragExp: number = 2;
@@ -445,16 +445,14 @@ class WGPUSoftbodyEngineWorker {
         bufferMapper.addParticle(new Particle(i++, new Vector2D(400, 500), new Vector2D(0, 20)))
         bufferMapper.addParticle(new Particle(i++, new Vector2D(400, 200), new Vector2D(10, 10)))
         bufferMapper.addParticle(new Particle(i++, new Vector2D(300, 200), new Vector2D(-10, 30)))
-        bufferMapper.addParticle(new Particle(i++, new Vector2D(100, 100), new Vector2D(5, 10)))
-        bufferMapper.addParticle(new Particle(i++, new Vector2D(150, 100), new Vector2D(0, 10)))
-        bufferMapper.addParticle(new Particle(i++, new Vector2D(500, 300), new Vector2D(0, 0)))
-        bufferMapper.addParticle(new Particle(i++, new Vector2D(800, 300), new Vector2D(0, 0)))
-        for (; i < 50;) {
-            bufferMapper.addParticle(new Particle(i++, new Vector2D(Math.random() * this.gridSize, Math.random() * this.gridSize), new Vector2D(Math.random() * 20 - 10, Math.random() * 20 - 10)))
-        }
         bufferMapper.addBeam(new Beam(0, 0, 1, 100, 1, 2))
         bufferMapper.addBeam(new Beam(1, 2, 3, 100, 1, 2))
         bufferMapper.addBeam(new Beam(2, 1, 2, 100, 1, 1))
+        bufferMapper.addParticle(new Particle(i++, new Vector2D(500, 300), new Vector2D(0, 0)))
+        bufferMapper.addParticle(new Particle(i++, new Vector2D(518, 400), new Vector2D(0, 0)))
+        for (; i < 50;) {
+            bufferMapper.addParticle(new Particle(i++, new Vector2D(Math.random() * this.gridSize, Math.random() * this.gridSize), new Vector2D(Math.random() * 20 - 10, Math.random() * 20 - 10)))
+        }
         bufferMapper.meta.gravity = 1;
         bufferMapper.save();
         // bufferMapper.meta.particleCount = bufferMapper.maxParticles;
