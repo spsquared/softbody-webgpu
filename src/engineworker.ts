@@ -27,6 +27,8 @@ class WGPUSoftbodyEngineWorker {
     private readonly borderFriction: number = 0.2;
     private readonly elasticity: number = 0.9;
     private readonly friction: number = 0.1;
+    private readonly dragCoeff: number = 0.001;
+    private readonly dragExp: number = 2;
 
     private readonly workgroupSize = 64;
 
@@ -263,7 +265,9 @@ class WGPUSoftbodyEngineWorker {
                             border_elasticity: this.borderElasticity,
                             border_friction: this.borderFriction,
                             elasticity: this.elasticity,
-                            friction: this.friction
+                            friction: this.friction,
+                            drag_coeff: this.dragCoeff,
+                            drag_exp: this.dragExp
                         }
                     }
                 }),
@@ -443,11 +447,11 @@ class WGPUSoftbodyEngineWorker {
         bufferMapper.addParticle(new Particle(i++, new Vector2D(300, 200), new Vector2D(-10, 30)))
         bufferMapper.addParticle(new Particle(i++, new Vector2D(100, 100), new Vector2D(5, 10)))
         bufferMapper.addParticle(new Particle(i++, new Vector2D(150, 100), new Vector2D(0, 10)))
-        // bufferMapper.addParticle(new Particle(i++, new Vector2D(500, 300), new Vector2D(0, 0)))
-        // bufferMapper.addParticle(new Particle(i++, new Vector2D(800, 300), new Vector2D(0, 0)))
-        // for (; i < 50;) {
-        //     bufferMapper.addParticle(new Particle(i++, new Vector2D(Math.random() * this.gridSize, Math.random() * this.gridSize), new Vector2D(Math.random() * 20 - 10, Math.random() * 20 - 10)))
-        // }
+        bufferMapper.addParticle(new Particle(i++, new Vector2D(500, 300), new Vector2D(0, 0)))
+        bufferMapper.addParticle(new Particle(i++, new Vector2D(800, 300), new Vector2D(0, 0)))
+        for (; i < 50;) {
+            bufferMapper.addParticle(new Particle(i++, new Vector2D(Math.random() * this.gridSize, Math.random() * this.gridSize), new Vector2D(Math.random() * 20 - 10, Math.random() * 20 - 10)))
+        }
         bufferMapper.addBeam(new Beam(0, 0, 1, 100, 1, 2))
         bufferMapper.addBeam(new Beam(1, 2, 3, 100, 1, 2))
         bufferMapper.addBeam(new Beam(2, 1, 2, 100, 1, 1))

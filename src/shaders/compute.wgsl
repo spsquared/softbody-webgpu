@@ -6,6 +6,8 @@ override border_elasticity: f32;
 override border_friction: f32;
 override elasticity: f32;
 override friction: f32;
+override drag_coeff: f32;
+override drag_exp: f32;
 
 @must_use
 fn cross2(u: vec2<f32>, v: vec2<f32>) -> f32 {
@@ -103,8 +105,10 @@ fn compute_main(thread: ComputeParams) {
     if (mapping_index < metadata.particle_i_c) {
         let index = getMappedIndex(mapping_index);
         var particle = particles[index];
-        // apply gravity
+        // gravity
         particle.a.y -= metadata.gravity;
+        // drag
+        particle.a -= drag_coeff * abs(pow(particle.v, vec2<f32>(drag_exp, drag_exp))) * normalize(particle.v);
         // border collisions (very simple)
         let clamped_pos = clamp(particle.p, vec2<f32>(particle_radius, particle_radius), vec2<f32>(f32(grid_size) - particle_radius, f32(grid_size) - particle_radius));
         if (particle.p.x != clamped_pos.x) {
@@ -130,7 +134,7 @@ fn compute_main(thread: ComputeParams) {
                 let tangent = vec2<f32>(-normal.y, normal.x);
                 let impulse_normal = elasticity_coeff * dot(inv_rel_velocity, normal);
                 let impulse_tangent = clamp(dot(inv_rel_velocity, tangent), -impulse_normal * friction, impulse_normal * friction);
-                particle.v -= impulse_normal * normal + impulse_tangent * tangent;
+                particle.v -= impulse_normal * normal + impulse_tangent * tangent + normal * 0.1;
             }
         }
         // apply acceleration and velocity
