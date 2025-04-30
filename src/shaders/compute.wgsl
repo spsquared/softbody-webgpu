@@ -108,11 +108,11 @@ fn compute_main(thread: ComputeParams) {
         // border collisions (very simple)
         let clamped_pos = clamp(particle.p, vec2<f32>(particle_radius, particle_radius), vec2<f32>(f32(grid_size) - particle_radius, f32(grid_size) - particle_radius));
         if (particle.p.x != clamped_pos.x) {
-            particle.a.y -= sign(particle.v.y) * border_friction * abs(particle.v.x) * (1 + border_elasticity);
+            particle.a.y -= min(particle.a.y, sign(particle.v.y) * border_friction * abs(particle.v.x) * (1 + border_elasticity));
             particle.v.x *= - border_elasticity;
         }
         if (particle.p.y != clamped_pos.y) {
-            particle.a.x -= sign(particle.v.x) * border_friction * abs(particle.v.y) * (1 + border_elasticity);
+            particle.a.x -= min(particle.a.x, sign(particle.v.x) * border_friction * abs(particle.v.y) * (1 + border_elasticity));
             particle.v.y *= - border_elasticity;
         }
         particle.p = clamped_pos;
@@ -124,10 +124,13 @@ fn compute_main(thread: ComputeParams) {
             }
             var other = particles[getMappedIndex(o_map_index)];
             let dist = distance(other.p, particle.p);
-            if (dist <= particle_radius && dist > 0) {
-                let norm = normalize(other.p - particle.p);
-                let impulse = elasticity_coeff * dot(particle.v - other.v, norm);
-                particle.v -= impulse * norm;
+            if (dist <= particle_radius * 2 && dist > 0) {
+                let inv_rel_velocity = particle.v - other.v;
+                let normal = normalize(other.p - particle.p);
+                let tangent = vec2<f32>(-normal.y, normal.x);
+                let impulse_normal = elasticity_coeff * dot(inv_rel_velocity, normal);
+                let impulse_tangent = clamp(dot(inv_rel_velocity, tangent), -impulse_normal * friction, impulse_normal * friction);
+                particle.v -= impulse_normal * normal + impulse_tangent * tangent;
             }
         }
         // apply acceleration and velocity

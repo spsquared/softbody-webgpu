@@ -262,7 +262,8 @@ class WGPUSoftbodyEngineWorker {
                             time_step: 1 / this.subticks,
                             border_elasticity: this.borderElasticity,
                             border_friction: this.borderFriction,
-                            elasticity: this.elasticity
+                            elasticity: this.elasticity,
+                            friction: this.friction
                         }
                     }
                 }),
