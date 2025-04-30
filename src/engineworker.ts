@@ -25,7 +25,7 @@ class WGPUSoftbodyEngineWorker {
     private readonly subticks: number = 32;
     private readonly borderElasticity: number = 0.5;
     private readonly borderFriction: number = 0.2;
-    private readonly elasticity: number = 0.7;
+    private readonly elasticity: number = 0.5;
     private readonly friction: number = 0.1;
     private readonly dragCoeff: number = 0.001;
     private readonly dragExp: number = 2;
@@ -125,7 +125,7 @@ class WGPUSoftbodyEngineWorker {
                 mapping: device.createBuffer({
                     label: 'Mapping buffer',
                     size: mapper.mapping.byteLength,
-                    usage: GPUBufferUsage.STORAGE | GPUBufferUsage.COPY_SRC | GPUBufferUsage.COPY_DST
+                    usage: GPUBufferUsage.STORAGE | GPUBufferUsage.INDEX | GPUBufferUsage.COPY_SRC | GPUBufferUsage.COPY_DST
                 }),
                 metadata: device.createBuffer({
                     label: 'Metadata buffer',
@@ -400,10 +400,14 @@ class WGPUSoftbodyEngineWorker {
         });
         renderPass.setPipeline(pipelines.renderParticles);
         renderPass.setVertexBuffer(0, buffers.particles);
+        // renderPass.setIndexBuffer(buffers.mapping, 'uint16', 0, bufferMapper.maxParticles * 2);
+        // renderPass.drawIndexedIndirect(buffers.metadata, 0);
         renderPass.drawIndirect(buffers.metadata, 0);
         renderPass.setPipeline(pipelines.renderBeams);
         renderPass.setVertexBuffer(0, buffers.beams);
         renderPass.setBindGroup(0, bindGroups.renderBeams.group);
+        // renderPass.setIndexBuffer(buffers.mapping, 'uint16', bufferMapper.maxParticles * 2, bufferMapper.maxParticles * 2);
+        // renderPass.drawIndexedIndirect(buffers.metadata, 20);
         renderPass.drawIndirect(buffers.metadata, 20);
         renderPass.end();
         device.queue.submit([encoder.finish()]);
@@ -440,30 +444,44 @@ class WGPUSoftbodyEngineWorker {
         // TESTING CODE
         const bufferMapper = await this.bufferMapper;
         bufferMapper.load();
-        let i = 0;
-        bufferMapper.addParticle(new Particle(i++, new Vector2D(500, 500), new Vector2D(0, 10)))
-        bufferMapper.addParticle(new Particle(i++, new Vector2D(400, 500), new Vector2D(0, 20)))
-        bufferMapper.addParticle(new Particle(i++, new Vector2D(400, 200), new Vector2D(10, 10)))
-        bufferMapper.addParticle(new Particle(i++, new Vector2D(300, 200), new Vector2D(-10, 30)))
-        bufferMapper.addBeam(new Beam(0, 0, 1, 100, 1, 2))
-        bufferMapper.addBeam(new Beam(1, 2, 3, 100, 1, 2))
-        bufferMapper.addBeam(new Beam(2, 1, 2, 100, 1, 1))
+        let i = 0, j = 0;
+        // beam tests
+        bufferMapper.addParticle(new Particle(i++, new Vector2D(500, 600), new Vector2D(0, 10)))
+        bufferMapper.addParticle(new Particle(i++, new Vector2D(400, 600), new Vector2D(0, 20)))
+        bufferMapper.addParticle(new Particle(i++, new Vector2D(400, 800), new Vector2D(10, 10)))
+        bufferMapper.addParticle(new Particle(i++, new Vector2D(300, 800), new Vector2D(-10, 30)))
+        bufferMapper.addBeam(new Beam(j++, 0, 1, 100, 1, 2))
+        bufferMapper.addBeam(new Beam(j++, 2, 3, 100, 1, 2))
+        // collision tests
         bufferMapper.addParticle(new Particle(i++, new Vector2D(500, 300), new Vector2D(0, 0)))
         bufferMapper.addParticle(new Particle(i++, new Vector2D(518, 400), new Vector2D(0, 0)))
-        bufferMapper.addParticle(new Particle(i++, new Vector2D(100, 200), new Vector2D(1, 0)))
-        bufferMapper.addParticle(new Particle(i++, new Vector2D(140, 200), new Vector2D(-1, 0)))
-        for (; i < 500;) {
-            bufferMapper.addParticle(new Particle(i++, new Vector2D(Math.random() * this.gridSize, Math.random() * this.gridSize), new Vector2D(Math.random() * 20 - 10, Math.random() * 20 - 10)))
-        }
-        bufferMapper.meta.gravity = 0.1;
+        bufferMapper.addParticle(new Particle(i++, new Vector2D(100, 500), new Vector2D(1, 0)))
+        bufferMapper.addParticle(new Particle(i++, new Vector2D(140, 500), new Vector2D(-1, 0)))
+        // more beams
+        let a = i;
+        bufferMapper.addParticle(new Particle(i++, new Vector2D(800, 800), new Vector2D(0, 0)))
+        bufferMapper.addParticle(new Particle(i++, new Vector2D(900, 800), new Vector2D(0, 0)))
+        bufferMapper.addParticle(new Particle(i++, new Vector2D(800, 900), new Vector2D(0, 0)))
+        bufferMapper.addParticle(new Particle(i++, new Vector2D(900, 900), new Vector2D(-10, 10)))
+        bufferMapper.addBeam(new Beam(j++, a, a + 1, 100, 1, 4));
+        bufferMapper.addBeam(new Beam(j++, a + 2, a + 3, 100, 1, 4));
+        bufferMapper.addBeam(new Beam(j++, a + 1, a + 3, 100, 1, 4));
+        bufferMapper.addBeam(new Beam(j++, a + 0, a + 2, 100, 1, 4));
+        bufferMapper.addBeam(new Beam(j++, a + 0, a + 3, Math.sqrt(2) * 100, 2, 1));
+        bufferMapper.addBeam(new Beam(j++, a + 1, a + 2, Math.sqrt(2) * 100, 2, 1));
+        // spam
+        // for (; i < 500;) {
+        //     bufferMapper.addParticle(new Particle(i++, new Vector2D(Math.random() * this.gridSize, Math.random() * this.gridSize), new Vector2D(Math.random() * 20 - 10, Math.random() * 20 - 10)))
+        // }
+        bufferMapper.meta.gravity = 0.5;
         bufferMapper.save();
-        // bufferMapper.meta.particleCount = bufferMapper.maxParticles;
-        // bufferMapper.meta.beamCount = bufferMapper.maxParticles;
         await this.writeBuffers();
         // STILL TESTING CODE
         // STILL TESTING CODE
         // STILL TESTING CODE
-        // console.log(new Uint32Array(bufferMapper.beamData))
+        // console.log(new Uint16Array(bufferMapper.mapping))
+        // console.log(new Float32Array(bufferMapper.particleData))
+        // console.log(new Float32Array(bufferMapper.beamData))
         while (true) {
             await new Promise<void>((resolve) => {
                 requestAnimationFrame(async () => {

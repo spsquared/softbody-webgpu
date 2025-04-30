@@ -68,7 +68,7 @@ const beam_force_scale: f32 = 65536;
 // once again wgpu not having u16 is annoying
 @must_use
 fn getMappedIndex(id: u32) -> u32 {
-    return extractBits(mappings[id / 2], ((id + 1) % 2) * 16, 16);
+    return extractBits(mappings[id / 2], (id % 2) * 16, 16);
 }
 
 @compute @workgroup_size(64, 1, 1)

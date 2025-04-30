@@ -304,7 +304,6 @@ export class BufferMapper {
         const bCount = this.meta.beamCount;
         for (let i = 0; i < bCount; i++) this.beams.add(Beam.from(this.beamData, this.mapping, i, this.maxParticles));
     }
-
     save(): void {
         this.meta.particleCount = this.particles.size;
         this.meta.beamCount = this.beams.size;
