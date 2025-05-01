@@ -456,11 +456,11 @@ class WGPUSoftbodyEngineWorker {
                 const particleDataLen = uint16View[1];
                 const beamMappingLen = uint16View[2];
                 const beamDataLen = uint16View[3];
-                const uint8View = new Uint8Array(buffer, Uint16Array.BYTES_PER_ELEMENT * 4);
-                new Uint8Array(bufferMapper.mapping).set(uint8View.subarray(0, particleMappingLen), 0);
-                new Uint8Array(bufferMapper.particleData).set(uint8View.subarray(particleMappingLen, particleMappingLen + particleDataLen), 0);
-                new Uint8Array(bufferMapper.mapping).set(uint8View.subarray(particleMappingLen + particleDataLen, particleMappingLen + particleDataLen + beamMappingLen), 0);
-                new Uint8Array(bufferMapper.beamData).set(uint8View.subarray(particleMappingLen + particleDataLen + beamMappingLen, particleMappingLen + particleDataLen + beamMappingLen + beamDataLen), 0);
+                const baseOffset = Uint16Array.BYTES_PER_ELEMENT * 4;
+                new Uint8Array(bufferMapper.mapping).set(new Uint8Array(buffer, baseOffset, particleMappingLen), 0);
+                new Uint8Array(bufferMapper.particleData).set(new Uint8Array(buffer, baseOffset + particleMappingLen, particleDataLen), 0);
+                new Uint8Array(bufferMapper.mapping).set(new Uint8Array(buffer, baseOffset + particleMappingLen + particleDataLen, beamMappingLen), Uint16Array.BYTES_PER_ELEMENT * bufferMapper.maxParticles);
+                new Uint8Array(bufferMapper.beamData).set(new Uint8Array(buffer, baseOffset + particleMappingLen + particleDataLen + beamMappingLen, beamDataLen), 0);
                 // compute & buffer mapper uses metadata for particle counts, so just fudge these numbers
                 bufferMapper.meta.particleCount = particleMappingLen / Uint16Array.BYTES_PER_ELEMENT;
                 bufferMapper.meta.beamCount = beamMappingLen / Uint16Array.BYTES_PER_ELEMENT;
