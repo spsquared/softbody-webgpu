@@ -589,35 +589,34 @@ class WGPUSoftbodyEngineWorker {
         bufferMapper.load();
         let i = 0, j = 0;
         // beam tests
-        bufferMapper.addParticle(new Particle(i++, new Vector2D(800, 600), new Vector2D(0, 10)));
-        bufferMapper.addParticle(new Particle(i++, new Vector2D(700, 600), new Vector2D(0, 20)));
-        bufferMapper.addParticle(new Particle(i++, new Vector2D(700, 800), new Vector2D(10, 10)));
-        bufferMapper.addParticle(new Particle(i++, new Vector2D(600, 800), new Vector2D(-10, 30)));
+        bufferMapper.addParticle(new Particle(i++, new Vector2D(700, 600), new Vector2D(0, 10)));
+        bufferMapper.addParticle(new Particle(i++, new Vector2D(600, 600), new Vector2D(0, 20)));
+        bufferMapper.addParticle(new Particle(i++, new Vector2D(600, 800), new Vector2D(10, 10)));
+        bufferMapper.addParticle(new Particle(i++, new Vector2D(500, 800), new Vector2D(-10, 30)));
         bufferMapper.addBeam(new Beam(j++, 0, 1, 100, 0.2, 20));
         bufferMapper.addBeam(new Beam(j++, 2, 3, 100, 0.2, 20));
         // collision tests
-        bufferMapper.addParticle(new Particle(i++, new Vector2D(700, 300), new Vector2D(0, 0)));
-        bufferMapper.addParticle(new Particle(i++, new Vector2D(718, 400), new Vector2D(0, 0)));
-        bufferMapper.addParticle(new Particle(i++, new Vector2D(500, 500), new Vector2D(1, 0)));
-        bufferMapper.addParticle(new Particle(i++, new Vector2D(540, 500), new Vector2D(-1, 0)));
-        let a = i;
-        function addSquare(ox: number, oy: number, d: number, s: number, bs: number, bd: number) {
-            let a = i;
-            for (let x = 0; x < s; x++) {
-                for (let y = 0; y < s; y++) {
+        bufferMapper.addParticle(new Particle(i++, new Vector2D(550, 300), new Vector2D(0, 0)));
+        bufferMapper.addParticle(new Particle(i++, new Vector2D(568, 400), new Vector2D(0, 0)));
+        bufferMapper.addParticle(new Particle(i++, new Vector2D(400, 500), new Vector2D(1, 0)));
+        bufferMapper.addParticle(new Particle(i++, new Vector2D(440, 500), new Vector2D(-1, 0)));
+        function addRectangle(ox: number, oy: number, d: number, w: number, h: number, bs: number, bd: number) {
+            for (let x = 0; x < w; x++) {
+                for (let y = 0; y < h; y++) {
                     let b = i;
                     bufferMapper.addParticle(new Particle(i++, new Vector2D(x * d + ox, y * d + oy)));
-                    if (y < s - 1) bufferMapper.addBeam(new Beam(j++, b, b + 1, d, bs, bd));
-                    if (x < s - 1) bufferMapper.addBeam(new Beam(j++, b, b + s, d, bs, bd));
-                    if (y < s - 1 && x < s - 1) bufferMapper.addBeam(new Beam(j++, b, b + s + 1, Math.sqrt(2) * d, bs, bd));
-                    if (y > 0 && x < s - 1) bufferMapper.addBeam(new Beam(j++, b, b + s - 1, Math.sqrt(2) * d, bs, bd));
+                    if (y < h - 1) bufferMapper.addBeam(new Beam(j++, b, b + 1, d, bs, bd));
+                    if (x < w - 1) bufferMapper.addBeam(new Beam(j++, b, b + h, d, bs, bd));
+                    if (y < h - 1 && x < w - 1) bufferMapper.addBeam(new Beam(j++, b, b + h + 1, Math.sqrt(2) * d, bs, bd));
+                    if (y > 0 && x < w - 1) bufferMapper.addBeam(new Beam(j++, b, b + h - 1, Math.sqrt(2) * d, bs, bd));
                 }
             }
         }
         // CUBES
-        addSquare(180, 10, 90, 2, 1, 50);
-        addSquare(40, 10, 90, 2, 1, 50);
-        addSquare(20, 120, 30, 10, 50, 700);
+        addRectangle(180, 10, 90, 2, 2, 1, 50);
+        addRectangle(40, 10, 90, 2, 2, 1, 50);
+        addRectangle(20, 120, 30, 10, 4, 50, 700);
+        addRectangle(800, 800, 40, 5, 5, 2, 50);
         // spam
         // for (; i < 500;) {
         //     bufferMapper.addParticle(new Particle(i++, new Vector2D(Math.random() * this.gridSize, Math.random() * this.gridSize), new Vector2D(Math.random() * 20 - 10, Math.random() * 20 - 10)))
