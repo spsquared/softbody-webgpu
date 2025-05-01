@@ -31,8 +31,6 @@
 </head>
 
 <body>
-    <div id="canvasRoot"></div>
-    <div id="pageRoot"></div>
     <div id="loadingCover">
         <div id="loadingCoverBar"></div>
         <noscript id="noscript">JavaScript was disabled!<br>Please enable it and <a href="" style="color: white">reload</a>!</noscript>
@@ -108,7 +106,15 @@
         <script src="/loadingCover.js"></script>
     </div>
     <div id="main">
-        <canvas id="canvas"></canvas>
+        <div id="canvasContainer">
+            <canvas id="canvas"></canvas>
+        </div>
+        <div id="controlsContainer">
+            <div>
+                <input type="button" id="saveSnapButton" value="Save snapshot">
+                <input type="button" id="loadSnapButton" value="Load snapshot">
+            </div>
+        </div>
     </div>
     <script type="module" src="/src/main.ts"></script>
 </body>

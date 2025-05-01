@@ -31,6 +31,7 @@ class WGPUSoftbodyEngineWorker {
     private readonly dragCoeff: number = 0.001;
     private readonly dragExp: number = 2;
 
+    private readonly blur: number = 0.4;
     private readonly workgroupSize = 64;
 
     private readonly modules: Promise<{
@@ -55,8 +56,12 @@ class WGPUSoftbodyEngineWorker {
         readonly renderParticles: GPURenderPipeline
         readonly renderBeams: GPURenderPipeline
     }>;
-
-    private readonly blur: number = 0.4;
+    private readonly stagingBuffers: Promise<{
+        readonly metadata: GPUBuffer
+        readonly particles: GPUBuffer
+        readonly beams: GPUBuffer
+        readonly mapping: GPUBuffer
+    }>;
 
     private visible: boolean = true;
     private readonly frameTimes: number[] = [];
@@ -112,31 +117,31 @@ class WGPUSoftbodyEngineWorker {
         });
         this.buffers = new Promise(async (resolve) => {
             const device = await this.device;
-            const mapper = await this.bufferMapper;
+            const bufferMapper = await this.bufferMapper;
             resolve({
                 metadata: device.createBuffer({
                     label: 'Metadata buffer',
-                    size: mapper.metadata.byteLength,
+                    size: bufferMapper.metadata.byteLength,
                     usage: GPUBufferUsage.STORAGE | GPUBufferUsage.INDIRECT | GPUBufferUsage.COPY_SRC | GPUBufferUsage.COPY_DST
                 }),
                 particles: device.createBuffer({
                     label: 'Particle data buffer',
-                    size: mapper.particleData.byteLength,
+                    size: bufferMapper.particleData.byteLength,
                     usage: GPUBufferUsage.STORAGE | GPUBufferUsage.VERTEX | GPUBufferUsage.COPY_SRC | GPUBufferUsage.COPY_DST
                 }),
                 beams: device.createBuffer({
                     label: 'Beam data buffer',
-                    size: mapper.beamData.byteLength,
+                    size: bufferMapper.beamData.byteLength,
                     usage: GPUBufferUsage.STORAGE | GPUBufferUsage.VERTEX | GPUBufferUsage.COPY_SRC | GPUBufferUsage.COPY_DST
                 }),
                 mapping: device.createBuffer({
                     label: 'Mapping buffer',
-                    size: mapper.mapping.byteLength,
+                    size: bufferMapper.mapping.byteLength,
                     usage: GPUBufferUsage.STORAGE | GPUBufferUsage.INDEX | GPUBufferUsage.COPY_SRC | GPUBufferUsage.COPY_DST
                 }),
                 beamForces: device.createBuffer({
                     label: 'Totally necessary beam forces buffer',
-                    size: mapper.maxParticles * 8,
+                    size: bufferMapper.maxParticles * Uint32Array.BYTES_PER_ELEMENT * 2,
                     usage: GPUBufferUsage.STORAGE
                 })
             });
@@ -370,18 +375,140 @@ class WGPUSoftbodyEngineWorker {
                 })
             });
         });
-        self.addEventListener('message', (e) => {
-            switch (e.data.type) {
-                case WGPUSoftbodyEngineMessageTypes.INPUT:
-                    this.userInput.appliedForce = Vector2D.fromObject(e.data.data[0]);
-                    this.userInput.mousePos = Vector2D.fromObject(e.data.data[1]);
-                    this.userInput.mouseActive = e.data.data[2];
-                    break;
-                case WGPUSoftbodyEngineMessageTypes.VISIBILITY_CHANGE:
-                    this.visible = !e.data.data
-            }
+        this.stagingBuffers = new Promise(async (resolve) => {
+            const device = await this.device;
+            const bufferMapper = await this.bufferMapper;
+            resolve({
+                metadata: device.createBuffer({
+                    label: 'Metadata staging buffer',
+                    size: bufferMapper.metadata.byteLength,
+                    usage: GPUBufferUsage.MAP_READ | GPUBufferUsage.COPY_DST
+                }),
+                particles: device.createBuffer({
+                    label: 'Particle data staging buffer',
+                    size: bufferMapper.particleData.byteLength,
+                    usage: GPUBufferUsage.MAP_READ | GPUBufferUsage.COPY_DST
+                }),
+                beams: device.createBuffer({
+                    label: 'Beam data staging buffer',
+                    size: bufferMapper.beamData.byteLength,
+                    usage: GPUBufferUsage.MAP_READ | GPUBufferUsage.COPY_DST
+                }),
+                mapping: device.createBuffer({
+                    label: 'Mapping staging buffer',
+                    size: bufferMapper.mapping.byteLength,
+                    usage: GPUBufferUsage.MAP_READ | GPUBufferUsage.COPY_DST
+                })
+            });
         });
-        this.beginDraw();
+        self.addEventListener('message', (e) => this.onMessage(e));
+        this.startDraw();
+    }
+
+    private postMessage(type: WGPUSoftbodyEngineMessageTypes, data?: any, transfers?: Transferable[]) {
+        self.postMessage({
+            type: type,
+            data: data
+        }, { transfer: transfers });
+    }
+    private async onMessage(e: MessageEvent) {
+        // scuffed blocks
+        switch (e.data.type) {
+            case WGPUSoftbodyEngineMessageTypes.INPUT: {
+                this.userInput.appliedForce = Vector2D.fromObject(e.data.data[0]);
+                this.userInput.mousePos = Vector2D.fromObject(e.data.data[1]);
+                this.userInput.mouseActive = e.data.data[2];
+            }
+                break;
+            case WGPUSoftbodyEngineMessageTypes.VISIBILITY_CHANGE: {
+                this.visible = !e.data.data;
+            }
+                break;
+            case WGPUSoftbodyEngineMessageTypes.SNAPSHOT_SAVE: {
+                const bufferMapper = await this.bufferMapper;
+                await this.loadBuffers();
+                // 4 uint16 for length of each section, then the data of each section
+                // mapping particles, particle data, mapping beams, beam data
+                const particleMappingLen = Uint16Array.BYTES_PER_ELEMENT * bufferMapper.meta.particleCount;
+                const particleDataLen = Particle.stride * bufferMapper.meta.particleCount;
+                const beamMappingLen = Uint16Array.BYTES_PER_ELEMENT * bufferMapper.meta.beamCount;
+                const beamDataLen = Beam.stride * bufferMapper.meta.beamCount;
+                const buffer = new ArrayBuffer(Uint16Array.BYTES_PER_ELEMENT * 4 + particleMappingLen + particleDataLen + beamMappingLen + beamDataLen);
+                const uint16View = new Uint16Array(buffer, 0, 4);
+                uint16View[0] = particleMappingLen;
+                uint16View[1] = particleDataLen;
+                uint16View[2] = beamMappingLen;
+                uint16View[3] = beamDataLen;
+                const uint8View = new Uint8Array(buffer, Uint16Array.BYTES_PER_ELEMENT * 4);
+                uint8View.set(new Uint8Array(bufferMapper.mapping, 0, particleMappingLen), 0);
+                uint8View.set(new Uint8Array(bufferMapper.particleData, 0, particleDataLen), particleMappingLen);
+                uint8View.set(new Uint8Array(bufferMapper.mapping, Uint16Array.BYTES_PER_ELEMENT * bufferMapper.maxParticles, beamMappingLen), particleMappingLen + particleDataLen);
+                uint8View.set(new Uint8Array(bufferMapper.beamData, 0, beamDataLen), particleMappingLen + particleDataLen + beamMappingLen);
+                this.postMessage(WGPUSoftbodyEngineMessageTypes.SNAPSHOT_SAVE, buffer)
+            }
+                break;
+            case WGPUSoftbodyEngineMessageTypes.SNAPSHOT_LOAD: {
+                const bufferMapper = await this.bufferMapper;
+                const buffer = e.data.data as ArrayBuffer;
+                // probably the least efficient and least readable way to extract these buffers
+                const uint16View = new Uint16Array(buffer, 0, 4);
+                const particleMappingLen = uint16View[0];
+                const particleDataLen = uint16View[1];
+                const beamMappingLen = uint16View[2];
+                const beamDataLen = uint16View[3];
+                const uint8View = new Uint8Array(buffer, Uint16Array.BYTES_PER_ELEMENT * 4);
+                new Uint8Array(bufferMapper.mapping).set(uint8View.subarray(0, particleMappingLen), 0);
+                new Uint8Array(bufferMapper.particleData).set(uint8View.subarray(particleMappingLen, particleMappingLen + particleDataLen), 0);
+                new Uint8Array(bufferMapper.mapping).set(uint8View.subarray(particleMappingLen + particleDataLen, particleMappingLen + particleDataLen + beamMappingLen), 0);
+                new Uint8Array(bufferMapper.beamData).set(uint8View.subarray(particleMappingLen + particleDataLen + beamMappingLen, particleMappingLen + particleDataLen + beamMappingLen + beamDataLen), 0);
+                // compute & buffer mapper uses metadata for particle counts, so just fudge these numbers
+                bufferMapper.meta.particleCount = particleMappingLen / Uint16Array.BYTES_PER_ELEMENT;
+                bufferMapper.meta.beamCount = beamMappingLen / Uint16Array.BYTES_PER_ELEMENT;
+                await this.writeBuffers();
+                this.postMessage(WGPUSoftbodyEngineMessageTypes.SNAPSHOT_LOAD);
+            }
+                break;
+        }
+    }
+
+    async loadBuffers(): Promise<void> {
+        const device = await this.device;
+        const buffers = await this.buffers;
+        const stagingBuffers = await this.stagingBuffers;
+        const bufferMapper = await this.bufferMapper;
+        // if only there was a readBuffer convenience function
+        const encoder = device.createCommandEncoder();
+        encoder.copyBufferToBuffer(buffers.metadata, 0, stagingBuffers.metadata, 0, buffers.metadata.size);
+        encoder.copyBufferToBuffer(buffers.particles, 0, stagingBuffers.particles, 0, buffers.particles.size);
+        encoder.copyBufferToBuffer(buffers.beams, 0, stagingBuffers.beams, 0, buffers.beams.size);
+        encoder.copyBufferToBuffer(buffers.mapping, 0, stagingBuffers.mapping, 0, buffers.mapping.size);
+        device.queue.submit([encoder.finish()]);
+        await device.queue.onSubmittedWorkDone();
+        await Promise.all([
+            stagingBuffers.metadata.mapAsync(GPUMapMode.READ, 0, stagingBuffers.metadata.size),
+            stagingBuffers.particles.mapAsync(GPUMapMode.READ, 0, stagingBuffers.particles.size),
+            stagingBuffers.beams.mapAsync(GPUMapMode.READ, 0, stagingBuffers.beams.size),
+            stagingBuffers.mapping.mapAsync(GPUMapMode.READ, 0, stagingBuffers.mapping.size)
+        ]);
+        // no way to directly copy ArrayBuffers (since they're just pointers) so we do this
+        new Uint8Array(bufferMapper.metadata).set(new Uint8Array(stagingBuffers.metadata.getMappedRange(0, stagingBuffers.metadata.size).slice()));
+        new Uint8Array(bufferMapper.particleData).set(new Uint8Array(stagingBuffers.particles.getMappedRange(0, stagingBuffers.particles.size).slice()));
+        new Uint8Array(bufferMapper.beamData).set(new Uint8Array(stagingBuffers.beams.getMappedRange(0, stagingBuffers.beams.size).slice()));
+        new Uint8Array(bufferMapper.mapping).set(new Uint8Array(stagingBuffers.mapping.getMappedRange(0, stagingBuffers.mapping.size).slice()));
+        stagingBuffers.metadata.unmap();
+        stagingBuffers.particles.unmap();
+        stagingBuffers.beams.unmap();
+        stagingBuffers.mapping.unmap();
+    }
+    async writeBuffers(): Promise<void> {
+        const device = await this.device;
+        const buffers = await this.buffers;
+        const bufferMapper = await this.bufferMapper;
+        device.queue.writeBuffer(buffers.metadata, 0, bufferMapper.metadata, 0);
+        device.queue.writeBuffer(buffers.mapping, 0, bufferMapper.mapping, 0);
+        device.queue.writeBuffer(buffers.particles, 0, bufferMapper.particleData, 0);
+        device.queue.writeBuffer(buffers.beams, 0, bufferMapper.beamData, 0);
+        await device.queue.onSubmittedWorkDone();
     }
 
     private readonly userInput = {
@@ -391,7 +518,6 @@ class WGPUSoftbodyEngineWorker {
         mouseActive: false,
         lastFrame: performance.now()
     };
-
     private async frame(): Promise<void> {
         const device = await this.device;
         const buffers = await this.buffers;
@@ -444,35 +570,18 @@ class WGPUSoftbodyEngineWorker {
         renderPass.end();
         // submit
         device.queue.submit([encoder.finish()]);
+        await device.queue.onSubmittedWorkDone();
         // framerate stuff
         const now = performance.now();
         this.frameTimes.push(now);
         while (this.frameTimes[0] + 1000 < now) this.frameTimes.shift();
         this.fpsHistory.push(this.frameTimes.length);
+        this.postMessage(WGPUSoftbodyEngineMessageTypes.FRAMERATE, this.currentFps);
     }
-
     get currentFps(): number {
         return this.frameTimes.length;
     }
-
-    async loadBuffers(): Promise<void> {
-        const device = await this.device;
-        const buffers = await this.buffers;
-        const bufferMapper = await this.bufferMapper;
-        throw new Error('buh no staging buffer to read from')
-    }
-
-    async writeBuffers(): Promise<void> {
-        const device = await this.device;
-        const buffers = await this.buffers;
-        const bufferMapper = await this.bufferMapper;
-        device.queue.writeBuffer(buffers.metadata, 0, bufferMapper.metadata, 0);
-        device.queue.writeBuffer(buffers.mapping, 0, bufferMapper.mapping, 0);
-        device.queue.writeBuffer(buffers.particles, 0, bufferMapper.particleData, 0);
-        device.queue.writeBuffer(buffers.beams, 0, bufferMapper.beamData, 0);
-    }
-
-    private async beginDraw(): Promise<void> {
+    private async startDraw(): Promise<void> {
         // TESTING CODE
         // TESTING CODE
         // TESTING CODE
@@ -480,45 +589,35 @@ class WGPUSoftbodyEngineWorker {
         bufferMapper.load();
         let i = 0, j = 0;
         // beam tests
-        bufferMapper.addParticle(new Particle(i++, new Vector2D(400, 600), new Vector2D(0, 10)));
-        bufferMapper.addParticle(new Particle(i++, new Vector2D(300, 600), new Vector2D(0, 20)));
-        bufferMapper.addParticle(new Particle(i++, new Vector2D(300, 800), new Vector2D(10, 10)));
-        bufferMapper.addParticle(new Particle(i++, new Vector2D(200, 800), new Vector2D(-10, 30)));
-        bufferMapper.addBeam(new Beam(j++, 0, 1, 100, 1, 2));
-        bufferMapper.addBeam(new Beam(j++, 2, 3, 100, 1, 2));
+        bufferMapper.addParticle(new Particle(i++, new Vector2D(800, 600), new Vector2D(0, 10)));
+        bufferMapper.addParticle(new Particle(i++, new Vector2D(700, 600), new Vector2D(0, 20)));
+        bufferMapper.addParticle(new Particle(i++, new Vector2D(700, 800), new Vector2D(10, 10)));
+        bufferMapper.addParticle(new Particle(i++, new Vector2D(600, 800), new Vector2D(-10, 30)));
+        bufferMapper.addBeam(new Beam(j++, 0, 1, 100, 0.2, 20));
+        bufferMapper.addBeam(new Beam(j++, 2, 3, 100, 0.2, 20));
         // collision tests
-        bufferMapper.addParticle(new Particle(i++, new Vector2D(300, 300), new Vector2D(0, 0)));
-        bufferMapper.addParticle(new Particle(i++, new Vector2D(318, 400), new Vector2D(0, 0)));
-        bufferMapper.addParticle(new Particle(i++, new Vector2D(100, 500), new Vector2D(1, 0)));
-        bufferMapper.addParticle(new Particle(i++, new Vector2D(140, 500), new Vector2D(-1, 0)));
-        // CUBE (its a square lol)
+        bufferMapper.addParticle(new Particle(i++, new Vector2D(700, 300), new Vector2D(0, 0)));
+        bufferMapper.addParticle(new Particle(i++, new Vector2D(718, 400), new Vector2D(0, 0)));
+        bufferMapper.addParticle(new Particle(i++, new Vector2D(500, 500), new Vector2D(1, 0)));
+        bufferMapper.addParticle(new Particle(i++, new Vector2D(540, 500), new Vector2D(-1, 0)));
         let a = i;
-        bufferMapper.addParticle(new Particle(i++, new Vector2D(800, 800), new Vector2D(0, 0)));
-        bufferMapper.addParticle(new Particle(i++, new Vector2D(900, 800), new Vector2D(0, 0)));
-        bufferMapper.addParticle(new Particle(i++, new Vector2D(800, 900), new Vector2D(0, 0)));
-        bufferMapper.addParticle(new Particle(i++, new Vector2D(900, 900), new Vector2D(-10, 10)));
-        bufferMapper.addBeam(new Beam(j++, a, a + 1, 100, 1, 4));
-        bufferMapper.addBeam(new Beam(j++, a + 2, a + 3, 100, 1, 4));
-        bufferMapper.addBeam(new Beam(j++, a + 1, a + 3, 100, 1, 4));
-        bufferMapper.addBeam(new Beam(j++, a + 0, a + 2, 100, 1, 4));
-        bufferMapper.addBeam(new Beam(j++, a + 0, a + 3, Math.sqrt(2) * 100, 2, 1));
-        bufferMapper.addBeam(new Beam(j++, a + 1, a + 2, Math.sqrt(2) * 100, 2, 1));
-        // BIG CUBE (still a square)
-        a = i;
-        const d = 40;
-        const s = 10;
-        const bs = 10;
-        const bd = 700;
-        for (let x = 0; x < s; x++) {
-            for (let y = 0; y < s; y++) {
-                let b = i;
-                bufferMapper.addParticle(new Particle(i++, new Vector2D(x * d + 500, y * d + 300)));
-                if (y < s - 1) bufferMapper.addBeam(new Beam(j++, b, b + 1, d, bs, bd));
-                if (x < s - 1) bufferMapper.addBeam(new Beam(j++, b, b + s, d, bs, bd));
-                if (y < s - 1 && x < s - 1) bufferMapper.addBeam(new Beam(j++, b, b + s + 1, Math.sqrt(2) * d, bs, bd));
-                if (y > 0 && x < s - 1) bufferMapper.addBeam(new Beam(j++, b, b + s - 1, Math.sqrt(2) * d, bs, bd));
+        function addSquare(ox: number, oy: number, d: number, s: number, bs: number, bd: number) {
+            let a = i;
+            for (let x = 0; x < s; x++) {
+                for (let y = 0; y < s; y++) {
+                    let b = i;
+                    bufferMapper.addParticle(new Particle(i++, new Vector2D(x * d + ox, y * d + oy)));
+                    if (y < s - 1) bufferMapper.addBeam(new Beam(j++, b, b + 1, d, bs, bd));
+                    if (x < s - 1) bufferMapper.addBeam(new Beam(j++, b, b + s, d, bs, bd));
+                    if (y < s - 1 && x < s - 1) bufferMapper.addBeam(new Beam(j++, b, b + s + 1, Math.sqrt(2) * d, bs, bd));
+                    if (y > 0 && x < s - 1) bufferMapper.addBeam(new Beam(j++, b, b + s - 1, Math.sqrt(2) * d, bs, bd));
+                }
             }
         }
+        // CUBES
+        addSquare(180, 10, 90, 2, 1, 50);
+        addSquare(40, 10, 90, 2, 1, 50);
+        addSquare(20, 120, 30, 10, 50, 700);
         // spam
         // for (; i < 500;) {
         //     bufferMapper.addParticle(new Particle(i++, new Vector2D(Math.random() * this.gridSize, Math.random() * this.gridSize), new Vector2D(Math.random() * 20 - 10, Math.random() * 20 - 10)))

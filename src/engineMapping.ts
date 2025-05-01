@@ -299,13 +299,14 @@ export class BufferMapper {
     readonly metadata: ArrayBuffer;
     readonly particleData: ArrayBuffer;
     readonly beamData: ArrayBuffer;
-    readonly mapping: Uint16Array;
+    readonly mapping: ArrayBuffer;
 
     readonly meta: Metadata;
     readonly maxParticles: number;
 
     private readonly particles: Set<Particle> = new Set();
     private readonly beams: Set<Beam> = new Set();
+    private readonly mappingUint16View: Uint16Array;
 
     /**
      * @param maxByteLength Maximum byte length of buffers allowed
@@ -316,25 +317,25 @@ export class BufferMapper {
         this.metadata = new ArrayBuffer(Metadata.byteLength);
         this.particleData = new ArrayBuffer(Particle.stride * this.maxParticles);
         this.beamData = new ArrayBuffer(Beam.stride * this.maxParticles);
-        this.mapping = new Uint16Array(2 * this.maxParticles);
+        this.mapping = new ArrayBuffer(Uint16Array.BYTES_PER_ELEMENT * 2 * this.maxParticles);
+        this.mappingUint16View = new Uint16Array(this.mapping);
         this.meta = new Metadata(this.metadata, this.maxParticles);
     }
 
     load(): void {
-        this.particles.clear();
-        this.beams.clear();
+        this.clear();
         const pCount = this.meta.particleCount;
-        for (let i = 0; i < pCount; i++) this.particles.add(Particle.from(this.particleData, this.mapping, i));
+        for (let i = 0; i < pCount; i++) this.particles.add(Particle.from(this.particleData, this.mappingUint16View, i));
         const bCount = this.meta.beamCount;
-        for (let i = 0; i < bCount; i++) this.beams.add(Beam.from(this.beamData, this.mapping, i, this.maxParticles));
+        for (let i = 0; i < bCount; i++) this.beams.add(Beam.from(this.beamData, this.mappingUint16View, i, this.maxParticles));
     }
     save(): void {
         this.meta.particleCount = this.particles.size;
         this.meta.beamCount = this.beams.size;
         const particles = [...this.particles.values()];
-        for (let i = 0; i < particles.length; i++) particles[i].to(this.particleData, this.mapping, i);
+        for (let i = 0; i < particles.length; i++) particles[i].to(this.particleData, this.mappingUint16View, i);
         const beams = [...this.beams.values()];
-        for (let i = 0; i < beams.length; i++) beams[i].to(this.beamData, this.mapping, i, this.maxParticles);
+        for (let i = 0; i < beams.length; i++) beams[i].to(this.beamData, this.mappingUint16View, i, this.maxParticles);
     }
 
     addParticle(p: Particle): boolean {
@@ -352,5 +353,9 @@ export class BufferMapper {
     }
     removeBeam(b: Beam): boolean {
         return this.beams.delete(b);
+    }
+    clear() {
+        this.particles.clear();
+        this.beams.clear();
     }
 }

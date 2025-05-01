@@ -57,8 +57,6 @@ var<storage, read> particles: array<Particle>;
 
 struct BeamVertexIn {
     @builtin(vertex_index) vertex_index: u32,
-    // @location(0) particle_a: u32,
-    // @location(1) particle_b: u32
     @location(0) particle_pair: u32,
     @location(1) target_length: f32
 }
