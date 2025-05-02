@@ -75,12 +75,10 @@ fn getMappedIndex(id: u32) -> u32 {
 
 @compute @workgroup_size(64, 1, 1)
 fn compute_main(thread: ComputeParams) {
-    // index to search in mapping buffer sections (y/z dims not used)
-    let mapping_index = thread.global_invocation_id.x;
-
-    // beam sim
-    if (mapping_index < metadata.beam_i_c) {
-        let index = getMappedIndex(metadata.max_particles + mapping_index);
+    // beam sim (inversion may help speed up simulation by spreading beams/particles across more threads)
+    let beam_mapping_index = metadata.max_particles - thread.global_invocation_id.x - 1;
+    if (beam_mapping_index < metadata.beam_i_c) {
+        let index = getMappedIndex(metadata.max_particles + beam_mapping_index);
         var beam = beams[index];
         let index_a = extractBits(beam.particle_pair, 0, 16);
         let index_b = extractBits(beam.particle_pair, 16, 16);
@@ -93,8 +91,12 @@ fn compute_main(thread: ComputeParams) {
         }
         let len = length(diff);
         // (ideal - current) * spring + (last - current) * damp
-        let force = ((beam.target_length - len) * beam.spring + (beam.last_length - len) * beam.damp) * normalize(diff);
+        let force_mag = ((beam.target_length - len) * beam.spring + (beam.last_length - len) * beam.damp);
+        let force = force_mag * normalize(diff);
         beam.last_length = len;
+        // TODO - add yield strength
+        // if a force is too strong the beam begins to behave plastically - its target length will change
+        // if the target length changes too much from its original length it will break
         beams[index] = beam;
         // atomics to add forces
         atomicAdd(&beam_forces[index_a * 2], i32(- force.x * beam_force_scale));
@@ -104,8 +106,9 @@ fn compute_main(thread: ComputeParams) {
     }
 
     // particle sim
-    if (mapping_index < metadata.particle_i_c) {
-        let index = getMappedIndex(mapping_index);
+    let particle_mapping_index = thread.global_invocation_id.x;
+    if (particle_mapping_index < metadata.particle_i_c) {
+        let index = getMappedIndex(particle_mapping_index);
         var particle = particles[index];
         // gravity
         particle.a += metadata.gravity;
@@ -117,7 +120,7 @@ fn compute_main(thread: ComputeParams) {
         // collide with other particles (naive solution)
         let elasticity_coeff = (metadata.elasticity + 1) / 2;
         for (var o_map_index: u32 = 0; o_map_index < metadata.particle_i_c; o_map_index++) {
-            if (o_map_index == mapping_index) {
+            if (o_map_index == particle_mapping_index) {
                 continue;
             }
             let other = particles[getMappedIndex(o_map_index)];

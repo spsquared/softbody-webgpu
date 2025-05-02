@@ -142,7 +142,7 @@ class WGPUSoftbodyEngineWorker {
                 beamForces: device.createBuffer({
                     label: 'Totally necessary beam forces buffer',
                     size: bufferMapper.maxParticles * Uint32Array.BYTES_PER_ELEMENT * 2,
-                    usage: GPUBufferUsage.STORAGE
+                    usage: GPUBufferUsage.STORAGE | GPUBufferUsage.COPY_DST
                 })
             });
         });
@@ -497,6 +497,9 @@ class WGPUSoftbodyEngineWorker {
         device.queue.writeBuffer(buffers.mapping, 0, bufferMapper.mapping, 0);
         device.queue.writeBuffer(buffers.particles, 0, bufferMapper.particleData, 0);
         device.queue.writeBuffer(buffers.beams, 0, bufferMapper.beamData, 0);
+        const encoder = device.createCommandEncoder();
+        encoder.clearBuffer(buffers.beamForces, 0, buffers.beamForces.size);
+        device.queue.submit([encoder.finish()]);
         await device.queue.onSubmittedWorkDone();
     }
 
@@ -578,17 +581,17 @@ class WGPUSoftbodyEngineWorker {
         bufferMapper.loadState();
         let i = 0, j = 0;
         // beam tests
-        bufferMapper.addParticle(new Particle(i++, new Vector2D(700, 600), new Vector2D(0, 10)));
-        bufferMapper.addParticle(new Particle(i++, new Vector2D(600, 600), new Vector2D(0, 20)));
-        bufferMapper.addParticle(new Particle(i++, new Vector2D(600, 800), new Vector2D(10, 10)));
-        bufferMapper.addParticle(new Particle(i++, new Vector2D(500, 800), new Vector2D(-10, 30)));
+        bufferMapper.addParticle(new Particle(i++, new Vector2D(800, 700), new Vector2D(0, 10)));
+        bufferMapper.addParticle(new Particle(i++, new Vector2D(700, 700), new Vector2D(0, 20)));
+        bufferMapper.addParticle(new Particle(i++, new Vector2D(650, 600), new Vector2D(10, 10)));
+        bufferMapper.addParticle(new Particle(i++, new Vector2D(550, 600), new Vector2D(-10, 30)));
         bufferMapper.addBeam(new Beam(j++, 0, 1, 100, 0.2, 20));
         bufferMapper.addBeam(new Beam(j++, 2, 3, 100, 0.2, 20));
         // collision tests
-        bufferMapper.addParticle(new Particle(i++, new Vector2D(550, 300), new Vector2D(0, 0)));
-        bufferMapper.addParticle(new Particle(i++, new Vector2D(568, 400), new Vector2D(0, 0)));
-        bufferMapper.addParticle(new Particle(i++, new Vector2D(400, 500), new Vector2D(1, 0)));
-        bufferMapper.addParticle(new Particle(i++, new Vector2D(440, 500), new Vector2D(-1, 0)));
+        // bufferMapper.addParticle(new Particle(i++, new Vector2D(550, 300), new Vector2D(0, 0)));
+        // bufferMapper.addParticle(new Particle(i++, new Vector2D(568, 400), new Vector2D(0, 0)));
+        // bufferMapper.addParticle(new Particle(i++, new Vector2D(400, 300), new Vector2D(1, 0)));
+        // bufferMapper.addParticle(new Particle(i++, new Vector2D(440, 300), new Vector2D(-1, 0)));
         function addRectangle(ox: number, oy: number, d: number, w: number, h: number, bs: number, bd: number) {
             for (let x = 0; x < w; x++) {
                 for (let y = 0; y < h; y++) {
@@ -601,11 +604,14 @@ class WGPUSoftbodyEngineWorker {
                 }
             }
         }
+        // lines
+        addRectangle(10, 990, 25, 10, 1, 10, 100);
         // CUBES
-        addRectangle(180, 10, 90, 2, 2, 1, 50);
-        addRectangle(40, 10, 90, 2, 2, 1, 50);
-        addRectangle(20, 120, 30, 10, 4, 50, 700);
-        addRectangle(800, 800, 40, 5, 5, 2, 50);
+        addRectangle(180, 10, 60, 2, 2, 1, 50);
+        addRectangle(40, 10, 60, 2, 2, 1, 50);
+        addRectangle(20, 120, 30, 9, 4, 50, 700);
+        addRectangle(900, 200, 30, 2, 20, 500, 500);
+        addRectangle(700, 400, 40, 5, 5, 2, 50);
         // spam
         // for (; i < 500;) {
         //     bufferMapper.addParticle(new Particle(i++, new Vector2D(Math.random() * this.gridSize, Math.random() * this.gridSize), new Vector2D(Math.random() * 20 - 10, Math.random() * 20 - 10)))

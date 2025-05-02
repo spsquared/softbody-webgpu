@@ -373,25 +373,27 @@ export class BufferMapper {
      */
     createSnapshotBuffer(): ArrayBuffer {
         this.writeState();
-        // 4 uint16 for length of each section, then metadata (8 float32), then the data of each section
+        // 5 uint16 for length of each section, then metadata (8 float32), then the data of each section
         // mapping particles, particle data, mapping beams, beam data
-        const particleMappingLen = Uint16Array.BYTES_PER_ELEMENT * this.meta.particleCount;
-        const particleDataLen = Particle.stride * this.meta.particleCount;
-        const beamMappingLen = Uint16Array.BYTES_PER_ELEMENT * this.meta.beamCount;
-        const beamDataLen = Beam.stride * this.meta.beamCount;
-        const buffer = new ArrayBuffer(Uint16Array.BYTES_PER_ELEMENT * 4 + Float32Array.BYTES_PER_ELEMENT * 8 + particleMappingLen + particleDataLen + beamMappingLen + beamDataLen);
-        const uint16View = new Uint16Array(buffer, 0, 4);
-        uint16View[0] = particleMappingLen;
-        uint16View[1] = particleDataLen;
-        uint16View[2] = beamMappingLen;
-        uint16View[3] = beamDataLen;
-        const float32View = new Float32Array(buffer, Uint16Array.BYTES_PER_ELEMENT * 4, 8);
-        float32View.set(new Float32Array(this.metadata, 48, 8))
-        const uint8View = new Uint8Array(buffer, Uint16Array.BYTES_PER_ELEMENT * 4 + Float32Array.BYTES_PER_ELEMENT * 8);
-        uint8View.set(new Uint8Array(this.mapping, 0, particleMappingLen), 0);
-        uint8View.set(new Uint8Array(this.particleData, 0, particleDataLen), particleMappingLen);
-        uint8View.set(new Uint8Array(this.mapping, Uint16Array.BYTES_PER_ELEMENT * this.maxParticles, beamMappingLen), particleMappingLen + particleDataLen);
-        uint8View.set(new Uint8Array(this.beamData, 0, beamDataLen), particleMappingLen + particleDataLen + beamMappingLen);
+        const lenSize = Uint16Array.BYTES_PER_ELEMENT * 6;
+        const metadataSize = Float32Array.BYTES_PER_ELEMENT * 8;
+        const particleMappingSize = Uint16Array.BYTES_PER_ELEMENT * this.meta.particleCount;
+        const particleDataSize = Particle.stride * this.meta.particleCount;
+        const beamMappingSize = Uint16Array.BYTES_PER_ELEMENT * this.meta.beamCount;
+        const beamDataSize = Beam.stride * this.meta.beamCount;
+        const buffer = new ArrayBuffer(lenSize + metadataSize + particleMappingSize + particleDataSize + beamMappingSize + beamDataSize);
+        const uint16View = new Uint16Array(buffer, 0, 5);
+        uint16View[0] = particleMappingSize;
+        uint16View[1] = particleDataSize;
+        uint16View[2] = beamMappingSize;
+        uint16View[3] = beamDataSize;
+        uint16View[4] = metadataSize;
+        new Float32Array(buffer, lenSize, metadataSize / Float32Array.BYTES_PER_ELEMENT).set(new Float32Array(this.metadata, 48, metadataSize / Float32Array.BYTES_PER_ELEMENT));
+        const uint8View = new Uint8Array(buffer, lenSize + metadataSize);
+        uint8View.set(new Uint8Array(this.mapping, 0, particleMappingSize), 0);
+        uint8View.set(new Uint8Array(this.particleData, 0, particleDataSize), particleMappingSize);
+        uint8View.set(new Uint8Array(this.mapping, Uint16Array.BYTES_PER_ELEMENT * this.maxParticles, beamMappingSize), particleMappingSize + particleDataSize);
+        uint8View.set(new Uint8Array(this.beamData, 0, beamDataSize), particleMappingSize + particleDataSize + beamMappingSize);
         return buffer;
     }
     /**
@@ -402,20 +404,22 @@ export class BufferMapper {
     loadSnapshotbuffer(buf: ArrayBuffer): void {
         const buffer = buf;
         // probably the least efficient and least readable way to extract these buffers
-        const uint16View = new Uint16Array(buffer, 0, 4);
-        const particleMappingLen = uint16View[0];
-        const particleDataLen = uint16View[1];
-        const beamMappingLen = uint16View[2];
-        const beamDataLen = uint16View[3];
-        new Float32Array(this.metadata, 48, 8).set(new Float32Array(buffer, Uint16Array.BYTES_PER_ELEMENT * 4, 8));
-        const baseOffset = Uint16Array.BYTES_PER_ELEMENT * 4 + Float32Array.BYTES_PER_ELEMENT * 8;
-        new Uint8Array(this.mapping).set(new Uint8Array(buffer, baseOffset, particleMappingLen), 0);
-        new Uint8Array(this.particleData).set(new Uint8Array(buffer, baseOffset + particleMappingLen, particleDataLen), 0);
-        new Uint8Array(this.mapping).set(new Uint8Array(buffer, baseOffset + particleMappingLen + particleDataLen, beamMappingLen), Uint16Array.BYTES_PER_ELEMENT * this.maxParticles);
-        new Uint8Array(this.beamData).set(new Uint8Array(buffer, baseOffset + particleMappingLen + particleDataLen + beamMappingLen, beamDataLen), 0);
+        const uint16View = new Uint16Array(buffer, 0, 5);
+        const lenSize = Uint16Array.BYTES_PER_ELEMENT * 6;
+        const particleMappingSize = uint16View[0];
+        const particleDataSize = uint16View[1];
+        const beamMappingSize = uint16View[2];
+        const beamDataSize = uint16View[3];
+        const metadataSize = uint16View[4];
+        new Float32Array(this.metadata, 48, metadataSize / Float32Array.BYTES_PER_ELEMENT).set(new Float32Array(buffer, lenSize, metadataSize / Float32Array.BYTES_PER_ELEMENT));
+        const baseOffset = lenSize + metadataSize;
+        new Uint8Array(this.mapping).set(new Uint8Array(buffer, baseOffset, particleMappingSize), 0);
+        new Uint8Array(this.particleData).set(new Uint8Array(buffer, baseOffset + particleMappingSize, particleDataSize), 0);
+        new Uint8Array(this.mapping).set(new Uint8Array(buffer, baseOffset + particleMappingSize + particleDataSize, beamMappingSize), Uint16Array.BYTES_PER_ELEMENT * this.maxParticles);
+        new Uint8Array(this.beamData).set(new Uint8Array(buffer, baseOffset + particleMappingSize + particleDataSize + beamMappingSize, beamDataSize), 0);
         // compute & buffer mapper uses metadata for particle counts, so just fudge these numbers
-        this.meta.particleCount = particleMappingLen / Uint16Array.BYTES_PER_ELEMENT;
-        this.meta.beamCount = beamMappingLen / Uint16Array.BYTES_PER_ELEMENT;
+        this.meta.particleCount = particleMappingSize / Uint16Array.BYTES_PER_ELEMENT;
+        this.meta.beamCount = beamMappingSize / Uint16Array.BYTES_PER_ELEMENT;
         this.loadState();
     }
 
