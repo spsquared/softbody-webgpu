@@ -2,13 +2,6 @@ override grid_size: f32;
 override particle_radius: f32;
 override time_step: f32;
 
-override border_elasticity: f32;
-override border_friction: f32;
-override elasticity: f32;
-override friction: f32;
-override drag_coeff: f32;
-override drag_exp: f32;
-
 @must_use
 fn cross2(u: vec2<f32>, v: vec2<f32>) -> f32 {
     return u.x * v.y - u.y * v.x;
@@ -43,8 +36,16 @@ struct Metadata {
     beam_f_v: u32,
     beam_b_v: u32,
     beam_f_i: u32,
+    @align(4) 
     max_particles: u32,
-    gravity: f32,
+    // 2 bytes pad due to vec2 alignment
+    gravity: vec2<f32>,
+    border_elasticity: f32,
+    border_friction: f32,
+    elasticity: f32,
+    friction: f32,
+    drag_coeff: f32,
+    drag_exp: f32,
     user_strength: f32,
     mouse_active: u32,
     mouse_pos: vec2<f32>,
@@ -107,13 +108,14 @@ fn compute_main(thread: ComputeParams) {
         let index = getMappedIndex(mapping_index);
         var particle = particles[index];
         // gravity
-        particle.a.y -= metadata.gravity;
+        particle.a += metadata.gravity;
         // drag
         if (length(particle.v) > 0) {
-            particle.a -= drag_coeff * abs(pow(particle.v, vec2<f32>(drag_exp, drag_exp))) * normalize(particle.v);
+            // particle.p.y += metadata.drag_exp * time_step;
+            particle.a -= metadata.drag_coeff * pow(abs(particle.v), vec2<f32>(metadata.drag_exp, metadata.drag_exp)) * normalize(particle.v);
         }
         // collide with other particles (naive solution)
-        let elasticity_coeff = (elasticity + 1) / 2;
+        let elasticity_coeff = (metadata.elasticity + 1) / 2;
         for (var o_map_index: u32 = 0; o_map_index < metadata.particle_i_c; o_map_index++) {
             if (o_map_index == mapping_index) {
                 continue;
@@ -122,10 +124,11 @@ fn compute_main(thread: ComputeParams) {
             let dist = length(other.p - particle.p);
             if (dist < particle_radius * 2 && dist > 0) {
                 let normal = normalize(other.p - particle.p);
-                let tangent = vec2<f32>(-normal.y, normal.x);
+                let tangent = vec2<f32>(- normal.y, normal.x);
                 let inv_rel_velocity = particle.v - other.v;
                 let impulse_normal = elasticity_coeff * dot(inv_rel_velocity, normal);
-                let impulse_tangent = clamp(dot(inv_rel_velocity, tangent), -impulse_normal * friction, impulse_normal * friction);
+                let max_friction = impulse_normal * metadata.friction;
+                let impulse_tangent = clamp(dot(inv_rel_velocity, tangent), - max_friction, max_friction);
                 particle.v -= impulse_normal * normal + impulse_tangent * tangent;
                 // offset thing from verlet integration style collisions
                 let clip_shift = normal * (particle_radius * 2 - dist) / 2;
@@ -136,18 +139,18 @@ fn compute_main(thread: ComputeParams) {
         // border collisions (very simple)
         let clamped_pos = clamp(particle.p, vec2<f32>(particle_radius, particle_radius), vec2<f32>(f32(grid_size) - particle_radius, f32(grid_size) - particle_radius));
         if (particle.p.x != clamped_pos.x) {
-            particle.a.y -= min(particle.a.y, sign(particle.v.y) * border_friction * abs(particle.v.x) * (1 + border_elasticity));
-            particle.v.x *= - border_elasticity;
+            particle.a.y -= min(particle.a.y, sign(particle.v.y) * metadata.border_friction * abs(particle.v.x) * (1 + metadata.border_elasticity));
+            particle.v.x *= - metadata.border_elasticity;
         }
         if (particle.p.y != clamped_pos.y) {
-            particle.a.x -= min(particle.a.x, sign(particle.v.x) * border_friction * abs(particle.v.y) * (1 + border_elasticity));
-            particle.v.y *= - border_elasticity;
+            particle.a.x -= min(particle.a.x, sign(particle.v.x) * metadata.border_friction * abs(particle.v.y) * (1 + metadata.border_elasticity));
+            particle.v.y *= - metadata.border_elasticity;
         }
         particle.p = clamped_pos;
         // user input forces
         particle.a += metadata.applied_force * metadata.user_strength;
         if (metadata.mouse_active > 0 && distance(metadata.mouse_pos, particle.p) < particle_radius * 10) {
-            particle.a += (metadata.mouse_vel - particle.v) * metadata.user_strength + vec2<f32>(0.0, metadata.gravity);
+            particle.a += (metadata.mouse_vel - particle.v) * metadata.user_strength - metadata.gravity;
         }
         // apply acceleration and velocity
         let beam_force_index = index * 2;

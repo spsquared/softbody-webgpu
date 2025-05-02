@@ -1,3 +1,5 @@
+import { WGPUSoftbodyEnginePhysicsConstants } from "./engine";
+
 type TypedArray = Uint8Array | Int8Array | Uint16Array | Int16Array | Uint32Array | Int32Array | Float32Array | Float64Array;
 
 // THERE IS NO VALIDATION FOR ANYTHING, IF SOMETHING GOES WRONG THERE WILL BE WEIRD ERRORS
@@ -222,78 +224,120 @@ export class Metadata {
      * - Beam base vertex - `u32`
      * - Beam first instance - `u32`
      * - Max particles - `u32`
-     * - Gravity - `f32`
+     * - Unused (due to vec2 alignment)
+     * - Gravity - `vec2<f32>`
+     * - Border elasticity - `f32`
+     * - Border friction - `f32`
+     * - Elasticity - `f32`
+     * - Friction - `f32`
+     * - Drag coefficient - `f32`
+     * - Drag exponent - `f32`
      * - User strength - `f32`
      * - Mouse active - `u32`
      * - Mouse position - `vec2<f32>`
      * - Mouse velocity - `vec2<f32>`
      * - User applied force - `vec2<f32>`
      */
-    static readonly byteLength = 80; // particle/beam = 40, game - 40, (be careful with struct alignment)
+    static readonly byteLength = 112;
+    // indirect buffer = 40
+    // max particle + pad = 8
+    // simulation constants = 32
+    // game inputs = 32
 
-    readonly buf: ArrayBuffer;
-    private readonly uint32View: Uint32Array;
-    private readonly float32View: Float32Array;
+    readonly buffer: ArrayBuffer;
+    private readonly indirectView: Uint32Array;
+    private readonly maxParticlesView: Uint32Array;
+    private readonly physicsConstantsView: Float32Array;
+    private readonly userInputViewUint32: Uint32Array;
+    private readonly userInputViewF32: Float32Array;
 
     constructor(buf: ArrayBuffer, maxParticles: number) {
-        this.buf = buf;
-        this.uint32View = new Uint32Array(this.buf);
-        this.float32View = new Float32Array(this.buf);
-        this.uint32View[0] = 3;
-        this.uint32View[5] = 2;
-        this.uint32View[10] = maxParticles;
+        this.buffer = buf;
+        this.indirectView = new Uint32Array(this.buffer, 0, 10);
+        this.indirectView[0] = 3;
+        this.indirectView[5] = 2;
+        this.maxParticlesView = new Uint32Array(this.buffer, 40, 1);
+        this.maxParticlesView[0] = maxParticles;
+        this.physicsConstantsView = new Float32Array(this.buffer, 48, 8);
+        this.userInputViewUint32 = new Uint32Array(this.buffer, 80, 8);
+        this.userInputViewF32 = new Float32Array(this.buffer, 80, 8);
         this.userStrength = 1;
+        this.setPhysicsConstants({
+            gravity: new Vector2D(0, -0.5),
+            borderElasticity: 0.5,
+            borderFriction: 0.2,
+            elasticity: 0.5,
+            friction: 0.1,
+            dragCoeff: 0.001,
+            dragExp: 2
+        });
     }
 
     get particleCount(): number {
-        return this.uint32View[1];
+        return this.indirectView[1];
     }
     set particleCount(c: number) {
-        this.uint32View[1] = c;
+        this.indirectView[1] = c;
     }
 
     get beamCount(): number {
-        return this.uint32View[6];
+        return this.indirectView[6];
     }
     set beamCount(c: number) {
-        this.uint32View[6] = c;
+        this.indirectView[6] = c;
     }
 
-    get gravity(): number {
-        return this.float32View[11];
+    setPhysicsConstants(constants: WGPUSoftbodyEnginePhysicsConstants): void {
+        constants.gravity.to(this.physicsConstantsView, 0);
+        this.physicsConstantsView[2] = constants.borderElasticity;
+        this.physicsConstantsView[3] = constants.borderFriction;
+        this.physicsConstantsView[4] = constants.elasticity;
+        this.physicsConstantsView[5] = constants.friction;
+        this.physicsConstantsView[6] = constants.dragCoeff;
+        this.physicsConstantsView[7] = constants.dragExp;
     }
-    set gravity(g: number) {
-        this.float32View[11] = g;
+    getPhysicsConstants(): WGPUSoftbodyEnginePhysicsConstants {
+        return {
+            gravity: Vector2D.from(this.physicsConstantsView, 0),
+            borderElasticity: this.physicsConstantsView[2],
+            borderFriction: this.physicsConstantsView[3],
+            elasticity: this.physicsConstantsView[4],
+            friction: this.physicsConstantsView[5],
+            dragCoeff: this.physicsConstantsView[6],
+            dragExp: this.physicsConstantsView[7]
+        };
     }
 
     get userStrength(): number {
-        return this.float32View[12];
+        return this.userInputViewF32[0];
     }
     set userStrength(p: number) {
-        this.float32View[12] = p;
+        this.userInputViewF32[0] = p;
     }
 
     setUserInput(appliedForce: Vector2D, mousePos: Vector2D, mouseVel: Vector2D, mouseActive: boolean): void {
-        this.uint32View[13] = mouseActive ? 1 : 0;
-        mousePos.to(this.float32View, 14);
-        mouseVel.to(this.float32View, 16);
-        appliedForce.to(this.float32View, 18);
+        this.userInputViewUint32[1] = mouseActive ? 1 : 0;
+        mousePos.to(this.userInputViewF32, 2);
+        mouseVel.to(this.userInputViewF32, 4);
+        appliedForce.to(this.userInputViewF32, 6);
     }
     writeUserInput(queue: GPUQueue, buffer: GPUBuffer) {
-        queue.writeBuffer(buffer, 48, this.buf, 48, 32);
-        // queue.writeBuffer(buffer, 0, this.buf, 0);
+        queue.writeBuffer(buffer, this.userInputViewF32.byteOffset, this.buffer, this.userInputViewF32.byteOffset, this.userInputViewF32.byteLength);
     }
 }
 
 /**
  * Defines buffer structs for locating particles and beams by ID in GPU buffers.
+ * 
+ * Can be used to edit simulation state and transfer that state to and from `ArrayBuffer`s.
+ * 
  * - Mapping buffers can hold up to `N` particles and `N` beams in `uint16` format,
  * with each index holding the location of the data in the respective buffer.
  * - Metadata buffer is also used as indirect buffer drawing
  * - Metadata holds number of particles/beams
  * - Mapping buffer is contiguous for the number of particles/beams
  * - Particles/beams never move within the data buffers, to make beam computations faster
- * - IDs of particles not guaranteed to stay the same
+ * - IDs of particles not guaranteed to stay the same across write/loads
  */
 export class BufferMapper {
     readonly metadata: ArrayBuffer;
@@ -322,20 +366,57 @@ export class BufferMapper {
         this.meta = new Metadata(this.metadata, this.maxParticles);
     }
 
-    load(): void {
-        this.clear();
-        const pCount = this.meta.particleCount;
-        for (let i = 0; i < pCount; i++) this.particles.add(Particle.from(this.particleData, this.mappingUint16View, i));
-        const bCount = this.meta.beamCount;
-        for (let i = 0; i < bCount; i++) this.beams.add(Beam.from(this.beamData, this.mappingUint16View, i, this.maxParticles));
+    /**
+     * Create a snapshot of the current simulation state and store it to a snapshot `ArrayBuffer`.
+     * Also writes the simulation state to buffers.
+     * @returns Snapshot `ArrayBuffer`
+     */
+    createSnapshotBuffer(): ArrayBuffer {
+        this.writeState();
+        // 4 uint16 for length of each section, then metadata (8 float32), then the data of each section
+        // mapping particles, particle data, mapping beams, beam data
+        const particleMappingLen = Uint16Array.BYTES_PER_ELEMENT * this.meta.particleCount;
+        const particleDataLen = Particle.stride * this.meta.particleCount;
+        const beamMappingLen = Uint16Array.BYTES_PER_ELEMENT * this.meta.beamCount;
+        const beamDataLen = Beam.stride * this.meta.beamCount;
+        const buffer = new ArrayBuffer(Uint16Array.BYTES_PER_ELEMENT * 4 + Float32Array.BYTES_PER_ELEMENT * 8 + particleMappingLen + particleDataLen + beamMappingLen + beamDataLen);
+        const uint16View = new Uint16Array(buffer, 0, 4);
+        uint16View[0] = particleMappingLen;
+        uint16View[1] = particleDataLen;
+        uint16View[2] = beamMappingLen;
+        uint16View[3] = beamDataLen;
+        const float32View = new Float32Array(buffer, Uint16Array.BYTES_PER_ELEMENT * 4, 8);
+        float32View.set(new Float32Array(this.metadata, 48, 8))
+        const uint8View = new Uint8Array(buffer, Uint16Array.BYTES_PER_ELEMENT * 4 + Float32Array.BYTES_PER_ELEMENT * 8);
+        uint8View.set(new Uint8Array(this.mapping, 0, particleMappingLen), 0);
+        uint8View.set(new Uint8Array(this.particleData, 0, particleDataLen), particleMappingLen);
+        uint8View.set(new Uint8Array(this.mapping, Uint16Array.BYTES_PER_ELEMENT * this.maxParticles, beamMappingLen), particleMappingLen + particleDataLen);
+        uint8View.set(new Uint8Array(this.beamData, 0, beamDataLen), particleMappingLen + particleDataLen + beamMappingLen);
+        return buffer;
     }
-    save(): void {
-        this.meta.particleCount = this.particles.size;
-        this.meta.beamCount = this.beams.size;
-        const particles = [...this.particles.values()];
-        for (let i = 0; i < particles.length; i++) particles[i].to(this.particleData, this.mappingUint16View, i);
-        const beams = [...this.beams.values()];
-        for (let i = 0; i < beams.length; i++) beams[i].to(this.beamData, this.mappingUint16View, i, this.maxParticles);
+    /**
+     * Replace simulation state with a snapshot from an `ArrayBuffer`.
+     * Also writes the simulation state to buffers.
+     * @param buf Snapshot `ArrayBuffer`
+     */
+    loadSnapshotbuffer(buf: ArrayBuffer): void {
+        const buffer = buf;
+        // probably the least efficient and least readable way to extract these buffers
+        const uint16View = new Uint16Array(buffer, 0, 4);
+        const particleMappingLen = uint16View[0];
+        const particleDataLen = uint16View[1];
+        const beamMappingLen = uint16View[2];
+        const beamDataLen = uint16View[3];
+        new Float32Array(this.metadata, 48, 8).set(new Float32Array(buffer, Uint16Array.BYTES_PER_ELEMENT * 4, 8));
+        const baseOffset = Uint16Array.BYTES_PER_ELEMENT * 4 + Float32Array.BYTES_PER_ELEMENT * 8;
+        new Uint8Array(this.mapping).set(new Uint8Array(buffer, baseOffset, particleMappingLen), 0);
+        new Uint8Array(this.particleData).set(new Uint8Array(buffer, baseOffset + particleMappingLen, particleDataLen), 0);
+        new Uint8Array(this.mapping).set(new Uint8Array(buffer, baseOffset + particleMappingLen + particleDataLen, beamMappingLen), Uint16Array.BYTES_PER_ELEMENT * this.maxParticles);
+        new Uint8Array(this.beamData).set(new Uint8Array(buffer, baseOffset + particleMappingLen + particleDataLen + beamMappingLen, beamDataLen), 0);
+        // compute & buffer mapper uses metadata for particle counts, so just fudge these numbers
+        this.meta.particleCount = particleMappingLen / Uint16Array.BYTES_PER_ELEMENT;
+        this.meta.beamCount = beamMappingLen / Uint16Array.BYTES_PER_ELEMENT;
+        this.loadState();
     }
 
     addParticle(p: Particle): boolean {
@@ -357,5 +438,27 @@ export class BufferMapper {
     clear() {
         this.particles.clear();
         this.beams.clear();
+    }
+
+    /**
+     * Write the current simulation state to buffers.
+     */
+    writeState(): void {
+        this.meta.particleCount = this.particles.size;
+        this.meta.beamCount = this.beams.size;
+        const particles = [...this.particles.values()];
+        for (let i = 0; i < particles.length; i++) particles[i].to(this.particleData, this.mappingUint16View, i);
+        const beams = [...this.beams.values()];
+        for (let i = 0; i < beams.length; i++) beams[i].to(this.beamData, this.mappingUint16View, i, this.maxParticles);
+    }
+    /**
+     * Load a new simulation state from buffers for editing.
+     */
+    loadState(): void {
+        this.clear();
+        const pCount = this.meta.particleCount;
+        for (let i = 0; i < pCount; i++) this.particles.add(Particle.from(this.particleData, this.mappingUint16View, i));
+        const bCount = this.meta.beamCount;
+        for (let i = 0; i < bCount; i++) this.beams.add(Beam.from(this.beamData, this.mappingUint16View, i, this.maxParticles));
     }
 }

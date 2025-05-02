@@ -33,7 +33,8 @@
 <body>
     <div id="loadingCover">
         <div id="loadingCoverBar"></div>
-        <noscript id="noscript">JavaScript was disabled!<br>Please enable it and <a href="" style="color: white">reload</a>!</noscript>
+        <noscript id="noscript">JavaScript was disabled!<br>Please enable it and <a href=""
+                style="color: white">reload</a>!</noscript>
         <div id="loadingErrorsContainer">
             <div id="loadingError"></div>
         </div>
@@ -113,6 +114,37 @@
             <div>
                 <input type="button" id="saveSnapButton" value="Save snapshot">
                 <input type="button" id="loadSnapButton" value="Load snapshot">
+            </div>
+            <div>
+                <div class="pairGrid">
+                    <label for="particleRadius">Particle radius:</label>
+                    <input type="number" id="particleRadius">
+                    <label for="subticks">Subticks:</label>
+                    <input type="number" id="subticks">
+                </div>
+                <input type="button" id="applyOptions" value="Apply">
+            </div>
+            <div>
+                <div class="pairGrid">
+                    <label>Gravity:</label>
+                    <span style="display: flex; gap: 4px;">
+                        <input type="number" id="gravityX" style="flex: 1;">
+                        <input type="number" id="gravityY" style="flex: 1;">
+                    </span>
+                    <label for="subticks">Border elasticity:</label>
+                    <input type="number" id="borderElasticity">
+                    <label for="subticks">Border friction:</label>
+                    <input type="number" id="borderFriction">
+                    <label for="subticks">Elasticity:</label>
+                    <input type="number" id="elasticity">
+                    <label for="subticks">Friction:</label>
+                    <input type="number" id="friction">
+                    <label for="subticks">Drag coefficient:</label>
+                    <input type="number" id="dragCoeff">
+                    <label for="subticks">Drag exponent:</label>
+                    <input type="number" id="dragExp">
+                </div>
+                <input type="button" id="applyConstants" value="Apply">
             </div>
         </div>
     </div>

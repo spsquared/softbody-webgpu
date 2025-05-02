@@ -1,13 +1,122 @@
 import './assets/main.css';
 
-export const main = document.getElementById('main') as HTMLDivElement;
-
-export const canvas = document.getElementById('canvas') as HTMLCanvasElement;
-
-import { WGPUSoftbodyEngine } from './engine';
+import { WGPUSoftbodyEngine, WGPUSoftbodyEngineOptions, WGPUSoftbodyEnginePhysicsConstants } from './engine';
 import { Vector2D } from './engineMapping';
 
+export const main = document.getElementById('main') as HTMLDivElement;
+export const canvas = document.getElementById('canvas') as HTMLCanvasElement;
+
+type Mutable<T> = {
+    -readonly [P in keyof T]: T[P]
+}
+
+const resolution = 800;
+const game: {
+    instance: WGPUSoftbodyEngine
+    readonly options: Mutable<WGPUSoftbodyEngineOptions>
+    readonly constants: Mutable<WGPUSoftbodyEnginePhysicsConstants>
+} = {
+    instance: new WGPUSoftbodyEngine(canvas, resolution, {
+        particleRadius: 10,
+        subticks: 64,
+    }),
+    options: {
+        particleRadius: 10,
+        subticks: 64,
+    },
+    constants: {
+        gravity: new Vector2D(0, -0.5),
+        borderElasticity: 0.5,
+        borderFriction: 0.2,
+        elasticity: 0.5,
+        friction: 0.1,
+        dragCoeff: 0.001,
+        dragExp: 2
+    }
+};
+game.instance.setPhysicsConstants(game.constants);
+
+Object.defineProperty(window, 'game', { value: game })
+
+document.getElementById('loadSnapButton')!.addEventListener('click', (e) => uploadSnapshot());
+document.getElementById('saveSnapButton')!.addEventListener('click', (e) => downloadSnapshot());
+async function downloadSnapshot() {
+    const blob = new Blob([await game.instance.saveSnapshot()]);
+    const url = URL.createObjectURL(blob);
+    const a = document.createElement('a');
+    a.href = url;
+    a.download = `snapshot-${Math.floor(Date.now() / 1000)}.dat`;
+    a.click();
+    URL.revokeObjectURL(url);
+}
+async function uploadSnapshot() {
+    const input = document.createElement('input');
+    input.type = 'file';
+    input.accept = '.dat';
+    input.addEventListener('change', async () => {
+        const file = input.files?.item(0);
+        if (file == null) return;
+        await game.instance.loadSnapshot(await file.arrayBuffer());
+        const constants = await game.instance.getPhysicsConstants();
+        // changing the object to a new object borks stuff so we do this thing
+        for (let i in constants) game.constants[i] = constants[i];
+        loadClamps();
+        updateClamps();
+    });
+    input.click();
+}
+
+// inputs for engine settings and world constants
+const clampedInputs = new Set<[HTMLInputElement, number | (() => number), number | (() => number), number, object | ((v?: number) => number)]>();
+function updateClamps() {
+    for (const [input, min, max, step, target] of clampedInputs) {
+        const val = Number(input.value);
+        const min2 = typeof min == 'number' ? min : min();
+        const max2 = typeof max == 'number' ? max : max();
+        const val2 = Math.max(min2, Math.min(max2, Math.round(val / step) * step));
+        input.min = min2.toString();
+        input.max = max2.toString();
+        const val3 = isNaN(val2) ? 1 : val2;
+        if (val != val2) input.value = val3.toString();
+        if (typeof target == 'function') target(val3);
+        else target[input.id] = val3;
+    }
+}
+function loadClamps() {
+    for (const [input, min, max, step, target] of clampedInputs) {
+        if (typeof target == 'function') input.value = target().toString();
+        else input.value = target[input.id].toString();
+    }
+}
+function createClampedInput(input: HTMLInputElement, min: number | (() => number), max: number | (() => number), step: number, target: object | ((v?: number) => number)): HTMLInputElement {
+    clampedInputs.add([input, min, max, step, target]);
+    input.step = step.toString();
+    input.addEventListener('input', () => updateClamps());
+    return input;
+}
+// game.options
+createClampedInput(document.getElementById('particleRadius') as HTMLInputElement, 1, 500, 1, game.options);
+createClampedInput(document.getElementById('subticks') as HTMLInputElement, 1, 192, 1, game.options);
+// constants
+createClampedInput(document.getElementById('gravityX') as HTMLInputElement, -10, 10, 0.02, (v) => ((v !== undefined && (game.constants.gravity = new Vector2D(v, game.constants.gravity.y))), game.constants.gravity.x));
+createClampedInput(document.getElementById('gravityY') as HTMLInputElement, -10, 10, 0.02, (v) => ((v !== undefined && (game.constants.gravity = new Vector2D(game.constants.gravity.x, v))), game.constants.gravity.y));
+createClampedInput(document.getElementById('borderElasticity') as HTMLInputElement, 0, 1, 0.01, game.constants);
+createClampedInput(document.getElementById('borderFriction') as HTMLInputElement, 0, 100, 0.01, game.constants);
+createClampedInput(document.getElementById('elasticity') as HTMLInputElement, 0, 1, 0.01, game.constants);
+createClampedInput(document.getElementById('friction') as HTMLInputElement, 0, 100, 0.01, game.constants);
+createClampedInput(document.getElementById('dragCoeff') as HTMLInputElement, 0, 2 ** 32, 0.001, game.constants);
+createClampedInput(document.getElementById('dragExp') as HTMLInputElement, 0, 4, 0.1, game.constants);
 // oof
+loadClamps();
+updateClamps();
+document.getElementById('applyOptions')?.addEventListener('click', () => {
+    game.instance.destroy();
+    game.instance = new WGPUSoftbodyEngine(canvas, resolution, game.options);
+    game.instance.setPhysicsConstants(game.constants);
+});
+document.getElementById('applyConstants')?.addEventListener('click', () => game.instance.setPhysicsConstants(game.constants));
+
+// buh inputs
 function throttle<F extends (...args: any[]) => void>(fn: F, ms: number): (...args: Parameters<F>) => void {
     let timeout: NodeJS.Timeout = setTimeout(() => { });
     let lastUpdate = 0;
@@ -24,37 +133,6 @@ function throttle<F extends (...args: any[]) => void>(fn: F, ms: number): (...ar
         }
     };
 }
-
-const game = new WGPUSoftbodyEngine(canvas, 800);
-
-Object.defineProperty(window, 'save', {
-    value: downloadSnapshot
-})
-
-document.getElementById('loadSnapButton')!.addEventListener('click', (e) => uploadSnapshot());
-document.getElementById('saveSnapButton')!.addEventListener('click', (e) => downloadSnapshot());
-async function downloadSnapshot() {
-    const blob = new Blob([await game.saveSnapshot()]);
-    const url = URL.createObjectURL(blob);
-    const a = document.createElement('a');
-    a.href = url;
-    a.download = `snapshot-${Math.floor(Date.now() / 1000)}.dat`;
-    a.click();
-    URL.revokeObjectURL(url);
-}
-async function uploadSnapshot() {
-    const input = document.createElement('input');
-    input.type = 'file';
-    input.accept = '.dat';
-    input.addEventListener('change', async () => {
-        const file = input.files?.item(0);
-        if (file == null) return;
-        await game.loadSnapshot(await file.arrayBuffer());
-    });
-    input.click();
-}
-
-// buh inputs
 const userInput = {
     appliedForce: new Vector2D(0, 0),
     mousePos: new Vector2D(0, 0),
@@ -62,7 +140,7 @@ const userInput = {
     touchActive: false
 };
 const sendUserInput = throttle(() => {
-    game.setUserInput(userInput.appliedForce, userInput.mousePos, userInput.mouseActive || userInput.touchActive);
+    game.instance.setUserInput(userInput.appliedForce, userInput.mousePos, userInput.mouseActive || userInput.touchActive);
 }, 10);
 function updateMouse(e: MouseEvent | Touch) {
     const rect = canvas.getBoundingClientRect();

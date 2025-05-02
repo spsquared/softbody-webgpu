@@ -1,6 +1,6 @@
 /// <reference types="@webgpu/types" />                                                                                                                                                        
 
-import { WGPUSoftbodyEngineMessageTypes } from './engine';
+import { WGPUSoftbodyEngineMessageTypes, WGPUSoftbodyEngineOptions } from './engine';
 import { Beam, BufferMapper, Particle, Vector2D } from './engineMapping';
 
 type BindGroupPair = { readonly layout: GPUBindGroupLayout, readonly group: GPUBindGroup };
@@ -8,8 +8,8 @@ type BindGroupPair = { readonly layout: GPUBindGroupLayout, readonly group: GPUB
 class WGPUSoftbodyEngineWorker {
     private static sInstance: WGPUSoftbodyEngineWorker | null = null;
 
-    static create(canvas: OffscreenCanvas): WGPUSoftbodyEngineWorker {
-        return WGPUSoftbodyEngineWorker.sInstance = new WGPUSoftbodyEngineWorker(canvas);
+    static create(canvas: OffscreenCanvas, opts?: Partial<WGPUSoftbodyEngineOptions>): WGPUSoftbodyEngineWorker {
+        return WGPUSoftbodyEngineWorker.sInstance = new WGPUSoftbodyEngineWorker(canvas, opts);
     }
 
     static instance(): WGPUSoftbodyEngineWorker | null {
@@ -21,18 +21,12 @@ class WGPUSoftbodyEngineWorker {
     private readonly device: Promise<GPUDevice>;
     private readonly textureFormat: GPUTextureFormat;
 
-    private readonly gridSize: number = 1000;
-    private readonly particleRadius: number = 10;
-    private readonly subticks: number = 64;
-    private readonly borderElasticity: number = 0.5;
-    private readonly borderFriction: number = 0.2;
-    private readonly elasticity: number = 0.5;
-    private readonly friction: number = 0.1;
-    private readonly dragCoeff: number = 0.001;
-    private readonly dragExp: number = 2;
+    readonly gridSize: number = 1000;
+    readonly particleRadius: number = 10;
+    readonly subticks: number = 64;
 
-    private readonly blur: number = 0.4;
-    private readonly workgroupSize = 64;
+    readonly blur: number = 0.4;
+    readonly workgroupSize = 64;
 
     private readonly modules: Promise<{
         readonly compute: GPUShaderModule
@@ -66,11 +60,17 @@ class WGPUSoftbodyEngineWorker {
     private visible: boolean = true;
     private readonly frameTimes: number[] = [];
     private readonly fpsHistory: number[] = [];
+    private running: boolean = true;
 
-    private constructor(canvas: OffscreenCanvas) {
+    private constructor(canvas: OffscreenCanvas, opts?: Partial<WGPUSoftbodyEngineOptions>) {
         this.canvas = canvas;
         this.ctx = this.canvas.getContext('webgpu') as GPUCanvasContext;
         if (this.ctx === null) throw new TypeError('WebGPU not supported');
+        // apply options
+        if (opts != undefined) {
+            if (opts.particleRadius !== undefined) this.particleRadius = opts.particleRadius;
+            if (opts.subticks !== undefined) this.subticks = opts.subticks;
+        }
         // get GPU device and configure devices
         if (navigator.gpu === undefined) throw new TypeError('WebGPU not supported');
         this.textureFormat = navigator.gpu.getPreferredCanvasFormat();
@@ -269,12 +269,6 @@ class WGPUSoftbodyEngineWorker {
                             grid_size: this.gridSize,
                             particle_radius: this.particleRadius,
                             time_step: 1 / this.subticks,
-                            border_elasticity: this.borderElasticity,
-                            border_friction: this.borderFriction,
-                            elasticity: this.elasticity,
-                            friction: this.friction,
-                            drag_coeff: this.dragCoeff,
-                            drag_exp: this.dragExp
                         }
                     }
                 }),
@@ -401,8 +395,9 @@ class WGPUSoftbodyEngineWorker {
                 })
             });
         });
-        self.addEventListener('message', (e) => this.onMessage(e));
+        self.addEventListener('message', this.onMessageWrapper);
         this.startDraw();
+        this.device.then((device) => device.lost.then(() => this.destroy()));
     }
 
     private postMessage(type: WGPUSoftbodyEngineMessageTypes, data?: any, transfers?: Transferable[]) {
@@ -414,10 +409,32 @@ class WGPUSoftbodyEngineWorker {
     private async onMessage(e: MessageEvent) {
         // scuffed blocks
         switch (e.data.type) {
+            case WGPUSoftbodyEngineMessageTypes.DESTROY: {
+                this.destroy();
+            }
+                break;
+            case WGPUSoftbodyEngineMessageTypes.PHYSICS_CONSTANTS: {
+                const bufferMapper = await this.bufferMapper;
+                await this.loadBuffers();
+                bufferMapper.meta.setPhysicsConstants({
+                    ...e.data.data,
+                    gravity: Vector2D.fromObject(e.data.data.gravity)
+                });
+                await this.writeBuffers();
+                this.postMessage(WGPUSoftbodyEngineMessageTypes.PHYSICS_CONSTANTS, bufferMapper.meta.getPhysicsConstants());
+            }
+                break;
+            case WGPUSoftbodyEngineMessageTypes.GET_PHYSICS_CONSTANTS: {
+                const bufferMapper = await this.bufferMapper;
+                await this.loadBuffers();
+                this.postMessage(WGPUSoftbodyEngineMessageTypes.PHYSICS_CONSTANTS, bufferMapper.meta.getPhysicsConstants());
+            }
+                break;
             case WGPUSoftbodyEngineMessageTypes.INPUT: {
                 this.userInput.appliedForce = Vector2D.fromObject(e.data.data[0]);
                 this.userInput.mousePos = Vector2D.fromObject(e.data.data[1]);
                 this.userInput.mouseActive = e.data.data[2];
+                this.postMessage(WGPUSoftbodyEngineMessageTypes.INPUT);
             }
                 break;
             case WGPUSoftbodyEngineMessageTypes.VISIBILITY_CHANGE: {
@@ -427,49 +444,21 @@ class WGPUSoftbodyEngineWorker {
             case WGPUSoftbodyEngineMessageTypes.SNAPSHOT_SAVE: {
                 const bufferMapper = await this.bufferMapper;
                 await this.loadBuffers();
-                // 4 uint16 for length of each section, then the data of each section
-                // mapping particles, particle data, mapping beams, beam data
-                const particleMappingLen = Uint16Array.BYTES_PER_ELEMENT * bufferMapper.meta.particleCount;
-                const particleDataLen = Particle.stride * bufferMapper.meta.particleCount;
-                const beamMappingLen = Uint16Array.BYTES_PER_ELEMENT * bufferMapper.meta.beamCount;
-                const beamDataLen = Beam.stride * bufferMapper.meta.beamCount;
-                const buffer = new ArrayBuffer(Uint16Array.BYTES_PER_ELEMENT * 4 + particleMappingLen + particleDataLen + beamMappingLen + beamDataLen);
-                const uint16View = new Uint16Array(buffer, 0, 4);
-                uint16View[0] = particleMappingLen;
-                uint16View[1] = particleDataLen;
-                uint16View[2] = beamMappingLen;
-                uint16View[3] = beamDataLen;
-                const uint8View = new Uint8Array(buffer, Uint16Array.BYTES_PER_ELEMENT * 4);
-                uint8View.set(new Uint8Array(bufferMapper.mapping, 0, particleMappingLen), 0);
-                uint8View.set(new Uint8Array(bufferMapper.particleData, 0, particleDataLen), particleMappingLen);
-                uint8View.set(new Uint8Array(bufferMapper.mapping, Uint16Array.BYTES_PER_ELEMENT * bufferMapper.maxParticles, beamMappingLen), particleMappingLen + particleDataLen);
-                uint8View.set(new Uint8Array(bufferMapper.beamData, 0, beamDataLen), particleMappingLen + particleDataLen + beamMappingLen);
-                this.postMessage(WGPUSoftbodyEngineMessageTypes.SNAPSHOT_SAVE, buffer)
+                bufferMapper.loadState();
+                this.postMessage(WGPUSoftbodyEngineMessageTypes.SNAPSHOT_SAVE, bufferMapper.createSnapshotBuffer());
             }
                 break;
             case WGPUSoftbodyEngineMessageTypes.SNAPSHOT_LOAD: {
                 const bufferMapper = await this.bufferMapper;
                 const buffer = e.data.data as ArrayBuffer;
-                // probably the least efficient and least readable way to extract these buffers
-                const uint16View = new Uint16Array(buffer, 0, 4);
-                const particleMappingLen = uint16View[0];
-                const particleDataLen = uint16View[1];
-                const beamMappingLen = uint16View[2];
-                const beamDataLen = uint16View[3];
-                const baseOffset = Uint16Array.BYTES_PER_ELEMENT * 4;
-                new Uint8Array(bufferMapper.mapping).set(new Uint8Array(buffer, baseOffset, particleMappingLen), 0);
-                new Uint8Array(bufferMapper.particleData).set(new Uint8Array(buffer, baseOffset + particleMappingLen, particleDataLen), 0);
-                new Uint8Array(bufferMapper.mapping).set(new Uint8Array(buffer, baseOffset + particleMappingLen + particleDataLen, beamMappingLen), Uint16Array.BYTES_PER_ELEMENT * bufferMapper.maxParticles);
-                new Uint8Array(bufferMapper.beamData).set(new Uint8Array(buffer, baseOffset + particleMappingLen + particleDataLen + beamMappingLen, beamDataLen), 0);
-                // compute & buffer mapper uses metadata for particle counts, so just fudge these numbers
-                bufferMapper.meta.particleCount = particleMappingLen / Uint16Array.BYTES_PER_ELEMENT;
-                bufferMapper.meta.beamCount = beamMappingLen / Uint16Array.BYTES_PER_ELEMENT;
+                bufferMapper.loadSnapshotbuffer(buffer);
                 await this.writeBuffers();
                 this.postMessage(WGPUSoftbodyEngineMessageTypes.SNAPSHOT_LOAD);
             }
                 break;
         }
     }
+    private onMessageWrapper = (e: MessageEvent) => this.onMessage(e);
 
     async loadBuffers(): Promise<void> {
         const device = await this.device;
@@ -586,7 +575,7 @@ class WGPUSoftbodyEngineWorker {
         // TESTING CODE
         // TESTING CODE
         const bufferMapper = await this.bufferMapper;
-        bufferMapper.load();
+        bufferMapper.loadState();
         let i = 0, j = 0;
         // beam tests
         bufferMapper.addParticle(new Particle(i++, new Vector2D(700, 600), new Vector2D(0, 10)));
@@ -621,10 +610,9 @@ class WGPUSoftbodyEngineWorker {
         // for (; i < 500;) {
         //     bufferMapper.addParticle(new Particle(i++, new Vector2D(Math.random() * this.gridSize, Math.random() * this.gridSize), new Vector2D(Math.random() * 20 - 10, Math.random() * 20 - 10)))
         // }
-        bufferMapper.meta.gravity = 0.5;
-        bufferMapper.save();
+        bufferMapper.writeState();
         await this.writeBuffers();
-        while (true) {
+        while (this.running) {
             await new Promise<void>((resolve) => {
                 if (this.visible) requestAnimationFrame(async () => {
                     await this.frame();
@@ -634,9 +622,19 @@ class WGPUSoftbodyEngineWorker {
             });
         }
     }
+
+    async destroy() {
+        this.running = false;
+        (await this.device).destroy();
+        self.removeEventListener('message', this.onMessageWrapper);
+        this.postMessage(WGPUSoftbodyEngineMessageTypes.DESTROY);
+        WGPUSoftbodyEngineWorker.sInstance = null;
+    }
 }
 
 self.onmessage = (e) => {
-    WGPUSoftbodyEngineWorker.create(e.data as OffscreenCanvas);
-    self.onmessage = null;
+    if (e.data.type == WGPUSoftbodyEngineMessageTypes.INIT) {
+        WGPUSoftbodyEngineWorker.create(e.data.data.canvas, e.data.data.options);
+        self.onmessage = null;
+    }
 };

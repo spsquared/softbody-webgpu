@@ -1,11 +1,30 @@
 import { Vector2D } from "./engineMapping";
 
 export enum WGPUSoftbodyEngineMessageTypes {
+    INIT,
+    DESTROY,
+    PHYSICS_CONSTANTS,
+    GET_PHYSICS_CONSTANTS,
     INPUT,
     VISIBILITY_CHANGE,
     SNAPSHOT_SAVE,
     SNAPSHOT_LOAD,
     FRAMERATE
+}
+
+export type WGPUSoftbodyEngineOptions = {
+    readonly particleRadius: number
+    readonly subticks: number
+};
+
+export type WGPUSoftbodyEnginePhysicsConstants = {
+    readonly gravity: Vector2D
+    readonly borderElasticity: number
+    readonly borderFriction: number
+    readonly elasticity: number
+    readonly friction: number
+    readonly dragCoeff: number
+    readonly dragExp: number
 }
 
 export class WGPUSoftbodyEngine {
@@ -16,7 +35,7 @@ export class WGPUSoftbodyEngine {
 
     private readonly worker: Worker;
 
-    constructor(canvas: HTMLCanvasElement, resolution: number) {
+    constructor(canvas: HTMLCanvasElement, resolution: number, opts?: Partial<WGPUSoftbodyEngineOptions>) {
         this.resolution = resolution;
         this.canvas = canvas;
         this.ctx = this.canvas.getContext('2d') as CanvasRenderingContext2D;
@@ -27,9 +46,9 @@ export class WGPUSoftbodyEngine {
         offscreen.width = this.resolution;
         offscreen.height = this.resolution;
         this.worker = new Worker(new URL('./engineWorker', import.meta.url), { type: 'module' });
-        this.worker.postMessage(offscreen, [offscreen]);
         this.worker.addEventListener('error', (err) => { throw err.error; });
         this.worker.addEventListener('message', (e) => this.onMessage(e));
+        this.postMessage(WGPUSoftbodyEngineMessageTypes.INIT, { canvas: offscreen, options: opts }, [offscreen]);
         document.addEventListener('visibilitychange', () => this.postMessage(WGPUSoftbodyEngineMessageTypes.VISIBILITY_CHANGE, document.hidden));
         this.postMessage(WGPUSoftbodyEngineMessageTypes.VISIBILITY_CHANGE, document.hidden);
         this.startDraw();
@@ -41,6 +60,19 @@ export class WGPUSoftbodyEngine {
             data: data
         }, { transfer: transfers });
     }
+    private async postMessageWithAck<T>(type: WGPUSoftbodyEngineMessageTypes, responseType?: WGPUSoftbodyEngineMessageTypes, data?: any, transfers?: Transferable[]): Promise<T> {
+        const resType = responseType ?? type;
+        return await new Promise<T>((resolve) => {
+            const listener = (e: MessageEvent) => {
+                if (e.data.type == resType) {
+                    resolve(e.data.data);
+                    this.worker.removeEventListener('message', listener);
+                }
+            };
+            this.worker.addEventListener('message', listener);
+            this.postMessage(type, data, transfers);
+        });
+    }
     private async onMessage(e: MessageEvent) {
         // more scuffed blocks
         switch (e.data.type) {
@@ -48,41 +80,34 @@ export class WGPUSoftbodyEngine {
                 this.fps = e.data.data;
             }
                 break;
+            case WGPUSoftbodyEngineMessageTypes.DESTROY: {
+                this.worker.terminate();
+            }
+                break;
         }
     }
 
-    setUserInput(appliedForce: Vector2D, mousePos: Vector2D, mouseActive: boolean): void {
-        this.postMessage(WGPUSoftbodyEngineMessageTypes.INPUT, [appliedForce, mousePos, mouseActive]);
+    async setUserInput(appliedForce: Vector2D, mousePos: Vector2D, mouseActive: boolean): Promise<void> {
+        await this.postMessageWithAck(WGPUSoftbodyEngineMessageTypes.INPUT, undefined, [appliedForce, mousePos, mouseActive]);
+    }
+    async setPhysicsConstants(constants: WGPUSoftbodyEnginePhysicsConstants): Promise<void> {
+        await this.postMessageWithAck(WGPUSoftbodyEngineMessageTypes.PHYSICS_CONSTANTS, undefined, constants);
+    }
+    async getPhysicsConstants(): Promise<WGPUSoftbodyEnginePhysicsConstants> {
+        return await this.postMessageWithAck<WGPUSoftbodyEnginePhysicsConstants>(WGPUSoftbodyEngineMessageTypes.GET_PHYSICS_CONSTANTS, WGPUSoftbodyEngineMessageTypes.PHYSICS_CONSTANTS);
     }
 
     async saveSnapshot(): Promise<ArrayBuffer> {
-        return await new Promise<ArrayBuffer>((resolve) => {
-            const listener = (e: MessageEvent) => {
-                if (e.data.type == WGPUSoftbodyEngineMessageTypes.SNAPSHOT_SAVE) {
-                    resolve(e.data.data);
-                    this.worker.removeEventListener('message', listener);
-                }
-            };
-            this.worker.addEventListener('message', listener);
-            this.postMessage(WGPUSoftbodyEngineMessageTypes.SNAPSHOT_SAVE);
-        });
+        return await this.postMessageWithAck<ArrayBuffer>(WGPUSoftbodyEngineMessageTypes.SNAPSHOT_SAVE);
     }
     async loadSnapshot(buf: ArrayBuffer): Promise<void> {
-        return await new Promise<void>((resolve) => {
-            const listener = (e: MessageEvent) => {
-                if (e.data.type == WGPUSoftbodyEngineMessageTypes.SNAPSHOT_LOAD) {
-                    resolve();
-                    this.worker.removeEventListener('message', listener);
-                }
-            };
-            this.worker.addEventListener('message', listener);
-            this.postMessage(WGPUSoftbodyEngineMessageTypes.SNAPSHOT_LOAD, buf, [buf]);
-        });
+        await this.postMessageWithAck<void>(WGPUSoftbodyEngineMessageTypes.SNAPSHOT_LOAD, undefined, buf, [buf]);
     }
 
+    private running: boolean = true;
     private fps: number = 0;
-    private async startDraw(): Promise<never> {
-        while (true) {
+    private async startDraw(): Promise<void> {
+        while (this.running) {
             await new Promise<void>((resolve) => {
                 if (!document.hidden) window.requestAnimationFrame(async () => {
                     this.ctx.drawImage(this.simCanvas, 0, 0);
@@ -96,5 +121,10 @@ export class WGPUSoftbodyEngine {
                 else setTimeout(resolve, 100);
             });
         }
+    }
+
+    destroy() {
+        this.running = false;
+        this.postMessage(WGPUSoftbodyEngineMessageTypes.DESTROY);
     }
 }
