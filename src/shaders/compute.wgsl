@@ -113,13 +113,8 @@ fn compute_main(thread: ComputeParams) {
         // particles read from one buffer and write to the other buffer (buffers alternate in workgroup dispatches)
         // prevents collision asymmetry where particle A calculates a force, moves, then particle B calculates a different force
         var particle = particles_read[index];
-        // gravity
-        particle.a += metadata.gravity;
-        // drag
-        if (length(particle.v) > 0) {
-            // particle.p.y += metadata.drag_exp * time_step;
-            particle.a -= metadata.drag_coeff * pow(abs(particle.v), vec2<f32>(metadata.drag_exp, metadata.drag_exp)) * normalize(particle.v);
-        }
+        // const copy of particle to prevent collisions from affecting subsequent collisions and borking physics
+        let const_particle = particle;
         // collide with other particles (naive solution)
         let elasticity_coeff = (metadata.elasticity + 1) / 2;
         for (var o_map_index: u32 = 0; o_map_index < metadata.particle_i_c; o_map_index++) {
@@ -128,23 +123,30 @@ fn compute_main(thread: ComputeParams) {
             }
             let other_index = getMappedIndex(o_map_index);
             let other = particles_read[other_index];
-            let dist = length(other.p - particle.p);
+            let dist = length(other.p - const_particle.p);
             if (dist < particle_radius * 2 && dist > 0) {
-                let normal = normalize(other.p - particle.p);
+                let normal = normalize(other.p - const_particle.p);
                 let tangent = vec2<f32>(- normal.y, normal.x);
-                let inv_rel_velocity = particle.v - other.v;
+                let inv_rel_velocity = const_particle.v - other.v;
                 let impulse_normal = elasticity_coeff * dot(inv_rel_velocity, normal);
                 let max_friction = impulse_normal * metadata.friction;
                 let impulse_tangent = clamp(dot(inv_rel_velocity, tangent), - max_friction, max_friction);
                 particle.v -= impulse_normal * normal + impulse_tangent * tangent;
                 // offset thing from verlet integration style collisions
                 let clip_shift = normal * (particle_radius * 2 - dist) / 2;
-                // particle.p -= clip_shift;
+                particle.p -= clip_shift;
                 // particle.v -= clip_shift;
                 // particle.a -= clip_shift / time_step;
                 // atomicAdd(&particle_forces[other_index * 2], i32(clip_shift.x / time_step * particle_force_scale));
                 // atomicAdd(&particle_forces[other_index * 2 + 1], i32(clip_shift.y / time_step * particle_force_scale));
             }
+        }
+        // gravity
+        particle.a += metadata.gravity;
+        // drag
+        if (length(particle.v) > 0) {
+            // particle.p.y += metadata.drag_exp * time_step;
+            particle.a -= metadata.drag_coeff * pow(abs(particle.v), vec2<f32>(metadata.drag_exp, metadata.drag_exp)) * normalize(particle.v);
         }
         // user input forces
         particle.a += metadata.applied_force * metadata.user_strength;

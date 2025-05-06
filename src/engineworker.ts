@@ -651,19 +651,37 @@ class WGPUSoftbodyEngineWorker {
                     bufferMapper.addParticle(new Particle(i++, new Vector2D(x * d + ox, y * d + oy)));
                     if (y < h - 1) bufferMapper.addBeam(new Beam(j++, b, b + 1, d, bs, bd));
                     if (x < w - 1) bufferMapper.addBeam(new Beam(j++, b, b + h, d, bs, bd));
-                    if (y < h - 1 && x < w - 1) bufferMapper.addBeam(new Beam(j++, b, b + h + 1, Math.sqrt(2) * d, bs, bd));
-                    if (y > 0 && x < w - 1) bufferMapper.addBeam(new Beam(j++, b, b + h - 1, Math.sqrt(2) * d, bs, bd));
+                    if (y < h - 1 && x < w - 1) bufferMapper.addBeam(new Beam(j++, b, b + h + 1, Math.SQRT2 * d, bs, bd));
+                    if (y > 0 && x < w - 1) bufferMapper.addBeam(new Beam(j++, b, b + h - 1, Math.SQRT2 * d, bs, bd));
                 }
             }
         }
         // lines
-        addRectangle(10, 990, 25, 10, 1, 10, 100);
+        // addRectangle(10, 990, 25, 10, 1, 10, 100);
         // CUBES
-        addRectangle(180, 10, 60, 2, 2, 1, 50);
-        addRectangle(40, 10, 60, 2, 2, 1, 50);
-        addRectangle(20, 120, 30, 9, 4, 50, 700);
-        addRectangle(900, 200, 30, 2, 20, 500, 500);
-        addRectangle(700, 400, 40, 5, 5, 2, 50);
+        // addRectangle(180, 10, 60, 2, 2, 1, 50);
+        // addRectangle(40, 10, 60, 2, 2, 1, 50);
+        // addRectangle(20, 120, 30, 9, 4, 50, 700);
+        // addRectangle(900, 200, 30, 2, 20, 500, 500);
+        // addRectangle(700, 400, 40, 5, 5, 2, 50);
+        // lol staircase
+        const qa = 500;
+        const qb = 100;
+        let guh = i;
+        for (let q = 0; q < 10; q++) {
+            addRectangle(10 + 60 * q, 10, 30, 2, 20 - q * 2, qa, qb);
+        }
+        for (let q = 0; q < 9; q++) {
+            const h = 20 - q * 2;
+            for (let v = h; v < h * 2 - 2; v++) {
+                // bufferMapper.addBeam(new Beam(j++, guh + v, guh + h + v, 30, qa, qb));
+                if (v > h) {
+                    // bufferMapper.addBeam(new Beam(j++, guh + v, guh + h + v - 1, 30 * Math.SQRT2, qa, qb));
+                }
+            }
+            // bufferMapper.addBeam(new Beam(j++, guh + h * 2 - 3, guh + h * 2 + (17 - q * 2), 30, qa, qb));
+            guh += 2 * h;
+        }
         // spam
         // for (; i < 100;) {
         //     bufferMapper.addParticle(new Particle(i++, new Vector2D(Math.random() * this.gridSize, Math.random() * this.gridSize), new Vector2D(Math.random() * 20 - 10, Math.random() * 20 - 10)))
