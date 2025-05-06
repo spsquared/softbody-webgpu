@@ -136,20 +136,12 @@ fn compute_main(thread: ComputeParams) {
                 // offset thing from verlet integration style collisions
                 let clip_shift = normal * (particle_radius * 2 - dist) / 2;
                 // particle.p -= clip_shift;
-                particle.v -= clip_shift;
+                // particle.v -= clip_shift;
+                // particle.a -= clip_shift / time_step;
+                // atomicAdd(&particle_forces[other_index * 2], i32(clip_shift.x / time_step * particle_force_scale));
+                // atomicAdd(&particle_forces[other_index * 2 + 1], i32(clip_shift.y / time_step * particle_force_scale));
             }
         }
-        // border collisions (very simple)
-        let clamped_pos = clamp(particle.p, vec2<f32>(particle_radius, particle_radius), vec2<f32>(f32(grid_size) - particle_radius, f32(grid_size) - particle_radius));
-        if (particle.p.x != clamped_pos.x) {
-            particle.a.y -= min(particle.a.y, sign(particle.v.y) * metadata.border_friction * abs(particle.v.x) * (1 + metadata.border_elasticity));
-            particle.v.x *= - metadata.border_elasticity;
-        }
-        if (particle.p.y != clamped_pos.y) {
-            particle.a.x -= min(particle.a.x, sign(particle.v.x) * metadata.border_friction * abs(particle.v.y) * (1 + metadata.border_elasticity));
-            particle.v.y *= - metadata.border_elasticity;
-        }
-        particle.p = clamped_pos;
         // user input forces
         particle.a += metadata.applied_force * metadata.user_strength;
         if (metadata.mouse_active > 0 && distance(metadata.mouse_pos, particle.p) < particle_radius * 10) {
@@ -162,6 +154,18 @@ fn compute_main(thread: ComputeParams) {
         particle.v += particle.a * time_step;
         particle.p += particle.v * time_step;
         particle.a = vec2<f32>(0.0, 0.0);
+        // border collisions (very simple)
+        let clamped_pos = clamp(particle.p, vec2<f32>(particle_radius, particle_radius), vec2<f32>(f32(grid_size) - particle_radius, f32(grid_size) - particle_radius));
+        if (particle.p.x != clamped_pos.x) {
+            particle.a.y -= min(particle.a.y, sign(particle.v.y) * metadata.border_friction * abs(particle.v.x) * (1 + metadata.border_elasticity));
+            particle.v.x *= - metadata.border_elasticity;
+        }
+        if (particle.p.y != clamped_pos.y) {
+            particle.a.x -= min(particle.a.x, sign(particle.v.x) * metadata.border_friction * abs(particle.v.y) * (1 + metadata.border_elasticity));
+            particle.v.y *= - metadata.border_elasticity;
+        }
+        particle.p = clamped_pos;
+        // write back to buffer
         particles[index] = particle;
     }
     // delete particles

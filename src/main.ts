@@ -36,8 +36,6 @@ const game: {
 };
 game.instance.setPhysicsConstants(game.constants);
 
-Object.defineProperty(window, 'game', { value: game })
-
 document.getElementById('loadSnapButton')!.addEventListener('click', (e) => uploadSnapshot());
 document.getElementById('saveSnapButton')!.addEventListener('click', (e) => downloadSnapshot());
 async function downloadSnapshot() {
@@ -77,7 +75,7 @@ function updateClamps() {
         input.min = min2.toString();
         input.max = max2.toString();
         const val3 = isNaN(val2) ? 1 : val2;
-        if (val != val2) input.value = val3.toString();
+        input.value = val3.toString();
         if (typeof target == 'function') target(val3);
         else target[input.id] = val3;
     }
@@ -91,7 +89,7 @@ function loadClamps() {
 function createClampedInput(input: HTMLInputElement, min: number | (() => number), max: number | (() => number), step: number, target: object | ((v?: number) => number)): HTMLInputElement {
     clampedInputs.add([input, min, max, step, target]);
     input.step = step.toString();
-    input.addEventListener('input', () => updateClamps());
+    input.addEventListener('blur', () => updateClamps());
     return input;
 }
 // game.options
@@ -105,7 +103,7 @@ createClampedInput(document.getElementById('borderFriction') as HTMLInputElement
 createClampedInput(document.getElementById('elasticity') as HTMLInputElement, 0, 1, 0.01, game.constants);
 createClampedInput(document.getElementById('friction') as HTMLInputElement, 0, 100, 0.01, game.constants);
 createClampedInput(document.getElementById('dragCoeff') as HTMLInputElement, 0, 2 ** 32, 0.001, game.constants);
-createClampedInput(document.getElementById('dragExp') as HTMLInputElement, 0, 4, 0.1, game.constants);
+createClampedInput(document.getElementById('dragExp') as HTMLInputElement, 1, 4, 0.1, game.constants);
 // oof
 loadClamps();
 updateClamps();
@@ -184,6 +182,7 @@ function updateKeyboard() {
     sendUserInput();
 }
 document.addEventListener('keydown', (e) => {
+    if (e.target instanceof HTMLElement && e.target.matches('input,button,textarea,select')) return;
     heldKeys[e.key.toLowerCase()] = 1;
     updateKeyboard();
 });
