@@ -94,7 +94,7 @@ function createClampedInput(input: HTMLInputElement, min: number | (() => number
 }
 // game.options
 createClampedInput(document.getElementById('particleRadius') as HTMLInputElement, 1, 500, 1, game.options);
-createClampedInput(document.getElementById('subticks') as HTMLInputElement, 1, 192, 1, game.options);
+createClampedInput(document.getElementById('subticks') as HTMLInputElement, 2, 192, 2, game.options);
 // constants
 createClampedInput(document.getElementById('gravityX') as HTMLInputElement, -10, 10, 0.02, (v) => ((v !== undefined && (game.constants.gravity = new Vector2D(v, game.constants.gravity.y))), game.constants.gravity.x));
 createClampedInput(document.getElementById('gravityY') as HTMLInputElement, -10, 10, 0.02, (v) => ((v !== undefined && (game.constants.gravity = new Vector2D(game.constants.gravity.x, v))), game.constants.gravity.y));

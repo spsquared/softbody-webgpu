@@ -36,13 +36,15 @@ class WGPUSoftbodyEngineWorker {
     private readonly bufferMapper: Promise<BufferMapper>;
     private readonly buffers: Promise<{
         readonly metadata: GPUBuffer
-        readonly particles: GPUBuffer
+        readonly particlesA: GPUBuffer
+        readonly particlesB: GPUBuffer
         readonly beams: GPUBuffer
         readonly mapping: GPUBuffer
         readonly beamForces: GPUBuffer
     }>;
     private readonly bindGroups: Promise<{
-        readonly compute: BindGroupPair
+        readonly computeA: BindGroupPair
+        readonly computeB: BindGroupPair
         readonly renderBeams: BindGroupPair
     }>;
     private readonly pipelines: Promise<{
@@ -69,7 +71,7 @@ class WGPUSoftbodyEngineWorker {
         // apply options
         if (opts != undefined) {
             if (opts.particleRadius !== undefined) this.particleRadius = opts.particleRadius;
-            if (opts.subticks !== undefined) this.subticks = opts.subticks;
+            if (opts.subticks !== undefined) this.subticks = Math.ceil(opts.subticks / 2) * 2;
         }
         // get GPU device and configure devices
         if (navigator.gpu === undefined) throw new TypeError('WebGPU not supported');
@@ -124,8 +126,13 @@ class WGPUSoftbodyEngineWorker {
                     size: bufferMapper.metadata.byteLength,
                     usage: GPUBufferUsage.STORAGE | GPUBufferUsage.INDIRECT | GPUBufferUsage.COPY_SRC | GPUBufferUsage.COPY_DST
                 }),
-                particles: device.createBuffer({
-                    label: 'Particle data buffer',
+                particlesA: device.createBuffer({
+                    label: 'Particle data buffer primary',
+                    size: bufferMapper.particleData.byteLength,
+                    usage: GPUBufferUsage.STORAGE | GPUBufferUsage.VERTEX | GPUBufferUsage.COPY_SRC | GPUBufferUsage.COPY_DST
+                }),
+                particlesB: device.createBuffer({
+                    label: 'Particle data buffer secondary',
                     size: bufferMapper.particleData.byteLength,
                     usage: GPUBufferUsage.STORAGE | GPUBufferUsage.VERTEX | GPUBufferUsage.COPY_SRC | GPUBufferUsage.COPY_DST
                 }),
@@ -159,7 +166,7 @@ class WGPUSoftbodyEngineWorker {
                     {
                         binding: 1,
                         visibility: GPUShaderStage.COMPUTE,
-                        buffer: { type: 'storage' }
+                        buffer: { type: 'read-only-storage' }
                     },
                     {
                         binding: 2,
@@ -175,6 +182,11 @@ class WGPUSoftbodyEngineWorker {
                         binding: 4,
                         visibility: GPUShaderStage.COMPUTE,
                         buffer: { type: 'storage' }
+                    },
+                    {
+                        binding: 5,
+                        visibility: GPUShaderStage.COMPUTE,
+                        buffer: { type: 'storage' }
                     }
                 ]
             });
@@ -187,46 +199,82 @@ class WGPUSoftbodyEngineWorker {
                     }
                 ]
             });
+            const computeCommonEntries = [
+                {
+                    binding: 0,
+                    resource: {
+                        label: 'Metadata buffer binding',
+                        buffer: buffers.metadata
+                    }
+                },
+                {
+                    binding: 3,
+                    resource: {
+                        label: 'Beam buffer binding',
+                        buffer: buffers.beams
+                    }
+                },
+                {
+                    binding: 4,
+                    resource: {
+                        label: 'Mapping buffer binding',
+                        buffer: buffers.mapping
+                    }
+                },
+                {
+                    binding: 5,
+                    resource: {
+                        label: 'Totally necessary beam forces buffer binding',
+                        buffer: buffers.beamForces
+                    }
+                }
+            ];
+            // two bind groups because alternating subticks reading from one and writing to the other - fixes collision asymmetry
+            // particle A collides with particle B, then moves, then particle B updates and calculates a different force, causing flying
             resolve({
-                compute: {
+                computeA: {
                     layout: computeBindGroupLayout,
                     group: device.createBindGroup({
-                        label: 'Compute bind group',
+                        label: 'Compute bind group A',
                         layout: computeBindGroupLayout,
                         entries: [
-                            {
-                                binding: 0,
-                                resource: {
-                                    label: 'Metadata buffer binding',
-                                    buffer: buffers.metadata
-                                }
-                            },
+                            ...computeCommonEntries,
                             {
                                 binding: 1,
                                 resource: {
-                                    label: 'Particle buffer binding',
-                                    buffer: buffers.particles
+                                    label: 'Particle buffer primary binding A',
+                                    buffer: buffers.particlesA
                                 }
                             },
                             {
                                 binding: 2,
                                 resource: {
-                                    label: 'Beam buffer binding',
-                                    buffer: buffers.beams
+                                    label: 'Particle buffer secondary binding A',
+                                    buffer: buffers.particlesB
+                                }
+                            }
+                        ]
+                    })
+                },
+                computeB: {
+                    layout: computeBindGroupLayout,
+                    group: device.createBindGroup({
+                        label: 'Compute bind group B',
+                        layout: computeBindGroupLayout,
+                        entries: [
+                            ...computeCommonEntries,
+                            {
+                                binding: 1,
+                                resource: {
+                                    label: 'Particle buffer secondary binding B',
+                                    buffer: buffers.particlesB
                                 }
                             },
                             {
-                                binding: 3,
+                                binding: 2,
                                 resource: {
-                                    label: 'Mapping buffer binding',
-                                    buffer: buffers.mapping
-                                }
-                            },
-                            {
-                                binding: 4,
-                                resource: {
-                                    label: 'Totally necessary beam forces buffer binding',
-                                    buffer: buffers.beamForces
+                                    label: 'Particle buffer primary binding B',
+                                    buffer: buffers.particlesA
                                 }
                             }
                         ]
@@ -242,7 +290,7 @@ class WGPUSoftbodyEngineWorker {
                                 binding: 1,
                                 resource: {
                                     label: 'Particle buffer binding',
-                                    buffer: buffers.particles
+                                    buffer: buffers.particlesA
                                 }
                             }
                         ]
@@ -260,7 +308,7 @@ class WGPUSoftbodyEngineWorker {
                     label: 'Compute pipeline',
                     layout: device.createPipelineLayout({
                         label: 'Compute pipeline layout',
-                        bindGroupLayouts: [bindGroups.compute.layout]
+                        bindGroupLayouts: [bindGroups.computeA.layout]
                     }),
                     compute: {
                         module: modules.compute,
@@ -468,7 +516,7 @@ class WGPUSoftbodyEngineWorker {
         // if only there was a readBuffer convenience function
         const encoder = device.createCommandEncoder();
         encoder.copyBufferToBuffer(buffers.metadata, 0, stagingBuffers.metadata, 0, buffers.metadata.size);
-        encoder.copyBufferToBuffer(buffers.particles, 0, stagingBuffers.particles, 0, buffers.particles.size);
+        encoder.copyBufferToBuffer(buffers.particlesA, 0, stagingBuffers.particles, 0, buffers.particlesA.size);
         encoder.copyBufferToBuffer(buffers.beams, 0, stagingBuffers.beams, 0, buffers.beams.size);
         encoder.copyBufferToBuffer(buffers.mapping, 0, stagingBuffers.mapping, 0, buffers.mapping.size);
         device.queue.submit([encoder.finish()]);
@@ -495,7 +543,7 @@ class WGPUSoftbodyEngineWorker {
         const bufferMapper = await this.bufferMapper;
         device.queue.writeBuffer(buffers.metadata, 0, bufferMapper.metadata, 0);
         device.queue.writeBuffer(buffers.mapping, 0, bufferMapper.mapping, 0);
-        device.queue.writeBuffer(buffers.particles, 0, bufferMapper.particleData, 0);
+        device.queue.writeBuffer(buffers.particlesA, 0, bufferMapper.particleData, 0);
         device.queue.writeBuffer(buffers.beams, 0, bufferMapper.beamData, 0);
         const encoder = device.createCommandEncoder();
         encoder.clearBuffer(buffers.beamForces, 0, buffers.beamForces.size);
@@ -534,9 +582,13 @@ class WGPUSoftbodyEngineWorker {
             label: 'Engine compute pass'
         });
         computePass.setPipeline(pipelines.compute);
-        computePass.setBindGroup(0, bindGroups.compute.group);
         const numWorkgroups = Math.ceil(bufferMapper.maxParticles / this.workgroupSize);
-        for (let i = 0; i < this.subticks; i++) computePass.dispatchWorkgroups(numWorkgroups, 1, 1);
+        for (let i = 0; i < this.subticks; i++) {
+            // alternating bind groups - read from one buffer and write to the other (fixes collision asymmetry)
+            if (i % 2 == 0) computePass.setBindGroup(0, bindGroups.computeA.group);
+            else computePass.setBindGroup(0, bindGroups.computeB.group);
+            computePass.dispatchWorkgroups(numWorkgroups, 1, 1);
+        }
         computePass.end();
         const renderPass = encoder.beginRenderPass({
             label: 'Render pass',
@@ -549,7 +601,7 @@ class WGPUSoftbodyEngineWorker {
         });
         // TODO: fix drawing bugs after particles are deleted - index buffer is borked
         renderPass.setPipeline(pipelines.renderParticles);
-        renderPass.setVertexBuffer(0, buffers.particles);
+        renderPass.setVertexBuffer(0, buffers.particlesA);
         // renderPass.setIndexBuffer(buffers.mapping, 'uint16', 0, bufferMapper.maxParticles * 2);
         // renderPass.drawIndexedIndirect(buffers.metadata, 0);
         renderPass.drawIndirect(buffers.metadata, 0);
@@ -581,12 +633,12 @@ class WGPUSoftbodyEngineWorker {
         bufferMapper.loadState();
         let i = 0, j = 0;
         // beam tests
-        bufferMapper.addParticle(new Particle(i++, new Vector2D(800, 700), new Vector2D(0, 10)));
-        bufferMapper.addParticle(new Particle(i++, new Vector2D(700, 700), new Vector2D(0, 20)));
-        bufferMapper.addParticle(new Particle(i++, new Vector2D(650, 600), new Vector2D(10, 10)));
-        bufferMapper.addParticle(new Particle(i++, new Vector2D(550, 600), new Vector2D(-10, 30)));
-        bufferMapper.addBeam(new Beam(j++, 0, 1, 100, 0.2, 20));
-        bufferMapper.addBeam(new Beam(j++, 2, 3, 100, 0.2, 20));
+        // bufferMapper.addParticle(new Particle(i++, new Vector2D(800, 700), new Vector2D(0, 10)));
+        // bufferMapper.addParticle(new Particle(i++, new Vector2D(700, 700), new Vector2D(0, 20)));
+        // bufferMapper.addParticle(new Particle(i++, new Vector2D(650, 600), new Vector2D(10, 10)));
+        // bufferMapper.addParticle(new Particle(i++, new Vector2D(550, 600), new Vector2D(-10, 30)));
+        // bufferMapper.addBeam(new Beam(j++, 0, 1, 100, 0.2, 20));
+        // bufferMapper.addBeam(new Beam(j++, 2, 3, 100, 0.2, 20));
         // collision tests
         // bufferMapper.addParticle(new Particle(i++, new Vector2D(550, 300), new Vector2D(0, 0)));
         // bufferMapper.addParticle(new Particle(i++, new Vector2D(568, 400), new Vector2D(0, 0)));
@@ -613,7 +665,7 @@ class WGPUSoftbodyEngineWorker {
         addRectangle(900, 200, 30, 2, 20, 500, 500);
         addRectangle(700, 400, 40, 5, 5, 2, 50);
         // spam
-        // for (; i < 500;) {
+        // for (; i < 100;) {
         //     bufferMapper.addParticle(new Particle(i++, new Vector2D(Math.random() * this.gridSize, Math.random() * this.gridSize), new Vector2D(Math.random() * 20 - 10, Math.random() * 20 - 10)))
         // }
         bufferMapper.writeState();

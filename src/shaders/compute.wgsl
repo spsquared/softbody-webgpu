@@ -36,7 +36,6 @@ struct Metadata {
     beam_f_v: u32,
     beam_b_v: u32,
     beam_f_i: u32,
-    @align(4) 
     max_particles: u32,
     // 2 bytes pad due to vec2 alignment
     gravity: vec2<f32>,
@@ -56,16 +55,18 @@ struct Metadata {
 @group(0) @binding(0)
 var<storage, read_write> metadata: Metadata;
 @group(0) @binding(1)
-var<storage, read_write> particles: array<Particle>;
+var<storage, read> particles_read: array<Particle>;
 @group(0) @binding(2)
-var<storage, read_write> beams: array<Beam>;
+var<storage, read_write> particles_write: array<Particle>;
 @group(0) @binding(3)
+var<storage, read_write> beams: array<Beam>;
+@group(0) @binding(4)
 var<storage, read_write> mappings: array<u32>;
 
 // super memory efficient very much yes
-@group(0) @binding(4)
-var<storage, read_write> beam_forces: array<atomic<i32>>;
-const beam_force_scale: f32 = 65536;
+@group(0) @binding(5)
+var<storage, read_write> particle_forces: array<atomic<i32>>;
+const particle_force_scale: f32 = 65536;
 
 // once again wgpu not having u16 is annoying
 @must_use
@@ -82,8 +83,8 @@ fn compute_main(thread: ComputeParams) {
         var beam = beams[index];
         let index_a = extractBits(beam.particle_pair, 0, 16);
         let index_b = extractBits(beam.particle_pair, 16, 16);
-        var particle_a = particles[index_a];
-        var particle_b = particles[index_b];
+        var particle_a = particles_read[index_a];
+        var particle_b = particles_read[index_b];
         var diff = particle_b.p - particle_a.p;
         if (length(diff) == 0) {
             // prevent divide by 0 in normalize
@@ -99,17 +100,19 @@ fn compute_main(thread: ComputeParams) {
         // if the target length changes too much from its original length it will break
         beams[index] = beam;
         // atomics to add forces
-        atomicAdd(&beam_forces[index_a * 2], i32(- force.x * beam_force_scale));
-        atomicAdd(&beam_forces[index_a * 2 + 1], i32(- force.y * beam_force_scale));
-        atomicAdd(&beam_forces[index_b * 2], i32(force.x * beam_force_scale));
-        atomicAdd(&beam_forces[index_b * 2 + 1], i32(force.y * beam_force_scale));
+        atomicAdd(&particle_forces[index_a * 2], i32(- force.x * particle_force_scale));
+        atomicAdd(&particle_forces[index_a * 2 + 1], i32(- force.y * particle_force_scale));
+        atomicAdd(&particle_forces[index_b * 2], i32(force.x * particle_force_scale));
+        atomicAdd(&particle_forces[index_b * 2 + 1], i32(force.y * particle_force_scale));
     }
 
     // particle sim
     let particle_mapping_index = thread.global_invocation_id.x;
     if (particle_mapping_index < metadata.particle_i_c) {
         let index = getMappedIndex(particle_mapping_index);
-        var particle = particles[index];
+        // particles read from one buffer and write to the other buffer (buffers alternate in workgroup dispatches)
+        // prevents collision asymmetry where particle A calculates a force, moves, then particle B calculates a different force
+        var particle = particles_read[index];
         // gravity
         particle.a += metadata.gravity;
         // drag
@@ -123,7 +126,8 @@ fn compute_main(thread: ComputeParams) {
             if (o_map_index == particle_mapping_index) {
                 continue;
             }
-            let other = particles[getMappedIndex(o_map_index)];
+            let other_index = getMappedIndex(o_map_index);
+            let other = particles_read[other_index];
             let dist = length(other.p - particle.p);
             if (dist < particle_radius * 2 && dist > 0) {
                 let normal = normalize(other.p - particle.p);
@@ -149,8 +153,8 @@ fn compute_main(thread: ComputeParams) {
         }
         // apply acceleration and velocity
         let beam_force_index = index * 2;
-        particle.a.x += f32(atomicExchange(&beam_forces[beam_force_index], 0)) / beam_force_scale;
-        particle.a.y += f32(atomicExchange(&beam_forces[beam_force_index + 1], 0)) / beam_force_scale;
+        particle.a.x += f32(atomicExchange(&particle_forces[beam_force_index], 0)) / particle_force_scale;
+        particle.a.y += f32(atomicExchange(&particle_forces[beam_force_index + 1], 0)) / particle_force_scale;
         particle.v += particle.a * time_step;
         particle.p += particle.v * time_step;
         particle.a = vec2<f32>(0.0, 0.0);
@@ -165,8 +169,8 @@ fn compute_main(thread: ComputeParams) {
             particle.v.y *= - metadata.border_elasticity;
         }
         particle.p = clamped_pos;
-        // write back to buffer
-        particles[index] = particle;
+        // write
+        particles_write[index] = particle;
     }
     // delete particles
 }
