@@ -665,7 +665,7 @@ class WGPUSoftbodyEngineWorker {
         // addRectangle(900, 200, 30, 2, 20, 500, 500);
         // addRectangle(700, 400, 40, 5, 5, 2, 50);
         // lol staircase
-        const qa = 500;
+        const qa = 100;
         const qb = 100;
         let guh = i;
         for (let q = 0; q < 10; q++) {
@@ -674,14 +674,18 @@ class WGPUSoftbodyEngineWorker {
         for (let q = 0; q < 9; q++) {
             const h = 20 - q * 2;
             for (let v = h; v < h * 2 - 2; v++) {
-                // bufferMapper.addBeam(new Beam(j++, guh + v, guh + h + v, 30, qa, qb));
+                bufferMapper.addBeam(new Beam(j++, guh + v, guh + h + v, 30, qa, qb));
                 if (v > h) {
-                    // bufferMapper.addBeam(new Beam(j++, guh + v, guh + h + v - 1, 30 * Math.SQRT2, qa, qb));
+                    bufferMapper.addBeam(new Beam(j++, guh + v, guh + h + v - 1, 30 * Math.SQRT2, qa, qb));
+                }
+                if (v < h * 2 - 3) {
+                    bufferMapper.addBeam(new Beam(j++, guh + v, guh + h + v + 1, 30 * Math.SQRT2, qa, qb));
                 }
             }
-            // bufferMapper.addBeam(new Beam(j++, guh + h * 2 - 3, guh + h * 2 + (17 - q * 2), 30, qa, qb));
             guh += 2 * h;
         }
+        addRectangle(20, 900, 50, 2, 2, 0.05, 10);
+        addRectangle(20, 700, 50, 2, 2, 0.1, 10);
         // spam
         // for (; i < 100;) {
         //     bufferMapper.addParticle(new Particle(i++, new Vector2D(Math.random() * this.gridSize, Math.random() * this.gridSize), new Vector2D(Math.random() * 20 - 10, Math.random() * 20 - 10)))

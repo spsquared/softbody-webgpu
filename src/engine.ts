@@ -35,6 +35,89 @@ export class WGPUSoftbodyEngine {
 
     private readonly worker: Worker;
 
+    private readonly userInput = {
+        appliedForce: new Vector2D(0, 0),
+        mousePos: new Vector2D(0, 0),
+        mouseActive: false,
+        touchActive: false
+    };
+    private readonly heldKeys: Record<string, number> = {};
+    private readonly listeners: Partial<{
+        [E in keyof DocumentEventMap]: ((ev: DocumentEventMap[E]) => any) | [(ev: DocumentEventMap[E]) => any, AddEventListenerOptions]
+    }> = {
+            mousedown: (e) => {
+                if (e.button == 0) this.userInput.mouseActive = true;
+                this.updateMouse(e);
+            },
+            mouseup: (e) => {
+                if (e.button == 0) this.userInput.mouseActive = false;
+                this.updateMouse(e);
+            },
+            mousemove: (e) => {
+                this.updateMouse(e);
+            },
+            touchstart: (e) => {
+                this.userInput.touchActive = true;
+                this.updateMouse(e.touches[0]);
+            },
+            touchend: () => {
+                this.userInput.touchActive = false;
+                this.sendUserInput();
+            },
+            touchcancel: () => {
+                this.userInput.touchActive = false;
+                this.sendUserInput();
+            },
+            touchmove: [(e) => {
+                this.updateMouse(e.touches[0]);
+                e.preventDefault();
+            }, { passive: false }],
+            keydown: (e) => {
+                if (e.target instanceof HTMLElement && e.target.matches('input,button,textarea,select')) return;
+                this.heldKeys[e.key.toLowerCase()] = 1;
+                this.updateKeyboard();
+            },
+            keyup: (e) => {
+                this.heldKeys[e.key.toLowerCase()] = 0;
+                this.updateKeyboard();
+            },
+            blur: () => {
+                this.userInput.mouseActive = false;
+                this.updateKeyboard();
+            }
+        };
+
+    private sendUserInput = ((fn) => {
+        let timeout: NodeJS.Timeout = setTimeout(() => { });
+        let lastUpdate = 0;
+        return () => {
+            clearTimeout(timeout);
+            if (performance.now() - lastUpdate >= 10) {
+                fn();
+                lastUpdate = performance.now();
+            } else {
+                timeout = setTimeout(() => {
+                    fn();
+                    lastUpdate = performance.now();
+                }, 10 - performance.now() + lastUpdate);
+            }
+        };
+    })(() => {
+        this.postMessageWithAck(WGPUSoftbodyEngineMessageTypes.INPUT, undefined, [this.userInput.appliedForce, this.userInput.mousePos, this.userInput.mouseActive || this.userInput.touchActive]);
+    });
+    private updateMouse(e: MouseEvent | Touch) {
+        const rect = this.canvas.getBoundingClientRect();
+        this.userInput.mousePos = new Vector2D((e.clientX - rect.x) / rect.width, 1 - (e.clientY - rect.y) / rect.height);
+        this.sendUserInput();
+    }
+    private updateKeyboard() {
+        this.userInput.appliedForce = new Vector2D(
+            (this.heldKeys['d'] ?? 0) - (this.heldKeys['a'] ?? 0),
+            (this.heldKeys['w'] ?? 0) - (this.heldKeys['s'] ?? 0)
+        );
+        this.sendUserInput();
+    }
+
     constructor(canvas: HTMLCanvasElement, resolution: number, opts?: Partial<WGPUSoftbodyEngineOptions>) {
         this.resolution = resolution;
         this.canvas = canvas;
@@ -52,6 +135,12 @@ export class WGPUSoftbodyEngine {
         document.addEventListener('visibilitychange', () => this.postMessage(WGPUSoftbodyEngineMessageTypes.VISIBILITY_CHANGE, document.hidden));
         this.postMessage(WGPUSoftbodyEngineMessageTypes.VISIBILITY_CHANGE, document.hidden);
         this.startDraw();
+        for (const ev in this.listeners) {
+            if (Array.isArray(this.listeners[ev]))
+                document.addEventListener(ev, this.listeners[ev][0], this.listeners[ev][1]);
+            else
+                document.addEventListener(ev, this.listeners[ev]);
+        }
     }
 
     private postMessage(type: WGPUSoftbodyEngineMessageTypes, data?: any, transfers?: Transferable[]) {
@@ -85,10 +174,6 @@ export class WGPUSoftbodyEngine {
             }
                 break;
         }
-    }
-
-    async setUserInput(appliedForce: Vector2D, mousePos: Vector2D, mouseActive: boolean): Promise<void> {
-        await this.postMessageWithAck(WGPUSoftbodyEngineMessageTypes.INPUT, undefined, [appliedForce, mousePos, mouseActive]);
     }
     async setPhysicsConstants(constants: WGPUSoftbodyEnginePhysicsConstants): Promise<void> {
         await this.postMessageWithAck(WGPUSoftbodyEngineMessageTypes.PHYSICS_CONSTANTS, undefined, constants);
@@ -126,5 +211,11 @@ export class WGPUSoftbodyEngine {
     destroy() {
         this.running = false;
         this.postMessage(WGPUSoftbodyEngineMessageTypes.DESTROY);
+        for (const ev in this.listeners) {
+            if (Array.isArray(this.listeners[ev]))
+                document.removeEventListener(ev, this.listeners[ev][0], this.listeners[ev][1]);
+            else
+                document.removeEventListener(ev, this.listeners[ev]);
+        }
     }
 }

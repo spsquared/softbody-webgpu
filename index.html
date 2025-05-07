@@ -33,8 +33,7 @@
 <body>
     <div id="loadingCover">
         <div id="loadingCoverBar"></div>
-        <noscript id="noscript">JavaScript was disabled!<br>Please enable it and <a href=""
-                style="color: white">reload</a>!</noscript>
+        <noscript id="noscript">JavaScript was disabled!<br>Please enable it and <a href="" style="color: white">reload</a>!</noscript>
         <div id="loadingErrorsContainer">
             <div id="loadingError"></div>
         </div>
@@ -111,7 +110,7 @@
             <canvas id="canvas"></canvas>
         </div>
         <div id="controlsContainer">
-            <div>
+            <div id="snapshotButtons">
                 <input type="button" id="saveSnapButton" value="Save snapshot">
                 <input type="button" id="loadSnapButton" value="Load snapshot">
             </div>
@@ -145,6 +144,23 @@
                     <input type="number" id="dragExp">
                 </div>
                 <input type="button" id="applyConstants" value="Apply">
+            </div>
+            <div>
+                <!-- reset - reset to initial state -->
+                <!-- edit - reset to and edit initial state -->
+                <!-- edit current - edit current state -->
+                <!-- simulate - replace all the buttons with one big simulate button -->
+                <div id="editButtonsGrid1">
+                    <input type="button" id="resetButton" value="Reset">
+                    <input type="button" id="editInitialButton" value="Reset & Edit">
+                    <input type="button" id="editCurrentButton" value="Edit Current">
+                </div>
+                <div id="editButtonsGrid2">
+                    <input type="button" id="simulateButton" value="Simulate">
+                </div>
+                <div id="editFileOptionsGrid">
+                    boof no saving oofodsofosfjdskglajf
+                </div>
             </div>
         </div>
     </div>

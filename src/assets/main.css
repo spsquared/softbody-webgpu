@@ -93,15 +93,6 @@ input[type=button]:active {
     padding: 4px 4px;
 }
 
-#controlsContainer>div:first-child {
-    display: flex;
-    column-gap: 4px;
-}
-
-#controlsContainer>div:first-child>* {
-    flex-grow: 1;
-}
-
 .pairGrid {
     display: grid;
     grid-template-columns: max-content 1fr;
@@ -112,6 +103,15 @@ input[type=button]:active {
 
 .pairGrid>*:nth-child(odd) {
     justify-self: flex-end;
+}
+
+#snapshotButtons {
+    display: flex;
+    flex-direction: row;
+    column-gap: 4px;
+}
+#snapshotButtons>input {
+    flex-grow: 1;
 }
 
 #gravityInputs {
@@ -128,4 +128,18 @@ input[type=button]:active {
 #applyConstants {
     margin-top: 4px;
     width: 100%;
+}
+
+#editButtonsGrid1,
+#editButtonsGrid2 {
+    display: flex;
+    flex-direction: row;
+    column-gap: 4px;
+    margin-bottom: 4px;
+}
+
+#editButtonsGrid1>input,
+#editButtonsGrid2>input {
+    flex-basis: 0px;
+    flex-grow: 1;
 }
