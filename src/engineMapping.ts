@@ -197,7 +197,7 @@ export class Metadata {
      * - Beam base vertex - `u32`
      * - Beam first instance - `u32`
      * - Max particles - `u32`
-     * - Unused (due to vec2 alignment)
+     * - Max beams - `u32`
      * - Gravity - `vec2<f32>`
      * - Border elasticity - `f32`
      * - Border friction - `f32`
@@ -224,13 +224,14 @@ export class Metadata {
     private readonly userInputViewUint32: Uint32Array;
     private readonly userInputViewF32: Float32Array;
 
-    constructor(buf: ArrayBuffer, maxParticles: number) {
+    constructor(buf: ArrayBuffer, maxParticles: number, maxBeams: number) {
         this.buffer = buf;
         this.indirectView = new Uint32Array(this.buffer, 0, 10);
         this.indirectView[0] = 3;
         this.indirectView[5] = 2;
-        this.maxParticlesView = new Uint32Array(this.buffer, 40, 1);
+        this.maxParticlesView = new Uint32Array(this.buffer, 40, 2);
         this.maxParticlesView[0] = maxParticles;
+        this.maxParticlesView[1] = maxBeams;
         this.physicsConstantsView = new Float32Array(this.buffer, 48, 8);
         this.userInputViewUint32 = new Uint32Array(this.buffer, 80, 8);
         this.userInputViewF32 = new Float32Array(this.buffer, 80, 8);
@@ -320,6 +321,7 @@ export class BufferMapper {
 
     readonly meta: Metadata;
     readonly maxParticles: number;
+    readonly maxBeams: number;
 
     // use map by id to prevent particles/beams with the same ID
     private readonly particles: Map<number, Particle> = new Map();
@@ -330,14 +332,15 @@ export class BufferMapper {
      * @param maxByteLength Maximum byte length of buffers allowed
      */
     constructor(maxByteLength: number) {
-        // either limited by uint16 index numbers, size of mapping buffer, or size of particle/beam buffers
-        this.maxParticles = Math.min(65536, maxByteLength / Uint16Array.BYTES_PER_ELEMENT / 2, Math.floor(maxByteLength / Math.max(Particle.stride, Beam.stride)));
+        // either limited by uint16 index numbers, size of mapping buffer (basically impossible), or size of particle/beam buffers
+        this.maxParticles = Math.min(65536, maxByteLength / Uint16Array.BYTES_PER_ELEMENT / 2, Math.floor(maxByteLength / Particle.stride));
+        this.maxBeams = Math.min(65536, maxByteLength / Uint16Array.BYTES_PER_ELEMENT / 2, Math.floor(maxByteLength / Particle.stride));
         this.metadata = new ArrayBuffer(Metadata.byteLength);
         this.particleData = new ArrayBuffer(Particle.stride * this.maxParticles);
-        this.beamData = new ArrayBuffer(Beam.stride * this.maxParticles);
-        this.mapping = new ArrayBuffer(Uint16Array.BYTES_PER_ELEMENT * 2 * this.maxParticles);
+        this.beamData = new ArrayBuffer(Beam.stride * this.maxBeams);
+        this.mapping = new ArrayBuffer(Uint16Array.BYTES_PER_ELEMENT * (this.maxParticles + this.maxBeams));
         this.mappingUint16View = new Uint16Array(this.mapping);
-        this.meta = new Metadata(this.metadata, this.maxParticles);
+        this.meta = new Metadata(this.metadata, this.maxParticles, this.maxBeams);
     }
 
     /**
@@ -386,7 +389,7 @@ export class BufferMapper {
         const beamDataSize = uint16View[3];
         const metadataSize = uint16View[4];
         // simulation buffers not large enough to contain this snapshot (if from a different device with more resources)
-        if (particleMappingSize > this.maxParticles || beamMappingSize > this.maxParticles) return false;
+        if (particleMappingSize > this.maxParticles || beamMappingSize > this.maxBeams) return false;
         new Float32Array(this.metadata, 48, metadataSize / Float32Array.BYTES_PER_ELEMENT).set(new Float32Array(buffer, lenSize, metadataSize / Float32Array.BYTES_PER_ELEMENT));
         const baseOffset = lenSize + metadataSize;
         new Uint8Array(this.mapping).set(new Uint8Array(buffer, baseOffset, particleMappingSize), 0);
@@ -406,7 +409,7 @@ export class BufferMapper {
         return true;
     }
     addBeam(b: Beam): boolean {
-        if (this.beams.size == this.maxParticles || this.beams.has(b.id)) return false;
+        if (this.beams.size == this.maxBeams || this.beams.has(b.id)) return false;
         this.beams.set(b.id, b);
         return true;
     }
@@ -429,7 +432,7 @@ export class BufferMapper {
         return -1;
     }
     get firstEmptyBeamId(): number {
-        for (let i = 0; i < this.maxParticles; i++) {
+        for (let i = 0; i < this.maxBeams; i++) {
             if (!this.beams.has(i)) return i;
         }
         return -1;

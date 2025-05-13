@@ -593,7 +593,7 @@ class WGPUSoftbodyEngineWorker {
             label: 'Engine compute pass'
         });
         computePass.setPipeline(pipelines.compute);
-        const numWorkgroups = Math.ceil(bufferMapper.maxParticles / this.workgroupSize);
+        const numWorkgroups = Math.ceil(Math.max(bufferMapper.maxParticles, bufferMapper.maxBeams) / this.workgroupSize);
         for (let i = 0; i < this.subticks; i++) {
             // alternating bind groups - read from one buffer and write to the other (fixes collision asymmetry)
             if (i % 2 == 0) computePass.setBindGroup(0, bindGroups.computeA.group);
@@ -619,7 +619,7 @@ class WGPUSoftbodyEngineWorker {
         renderPass.setPipeline(pipelines.renderBeams);
         renderPass.setVertexBuffer(0, buffers.beams);
         renderPass.setBindGroup(0, bindGroups.renderBeams.group);
-        // renderPass.setIndexBuffer(buffers.mapping, 'uint16', bufferMapper.maxParticles * 2, bufferMapper.maxParticles * 2);
+        // renderPass.setIndexBuffer(buffers.mapping, 'uint16', bufferMapper.maxParticles * 2, bufferMapper.maxBeams * 2);
         // renderPass.drawIndexedIndirect(buffers.metadata, 20);
         renderPass.drawIndirect(buffers.metadata, 20);
         renderPass.end();

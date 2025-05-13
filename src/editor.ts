@@ -142,6 +142,11 @@ export class SoftbodyEditor {
         // target particle or something
         if (this.action.mode == 'particle') {
             if (this.action.deleteMode) {
+                // right click support????
+                // right click support????
+                // right click support????
+                // right click support????
+                // right click support????
                 // deletey deleters
                 if (this.action.hoverParticle != null) {
                     bufferMapper.removeParticle(this.action.hoverParticle);
@@ -292,7 +297,9 @@ export class SoftbodyEditor {
         }
         this.ctx.stroke();
         // invalid beams
-        this.ctx.strokeStyle = 'rgba(255, 0, 0, 1)';
+        this.ctx.strokeStyle = '#FF00FF';
+        this.ctx.lineWidth = 2;
+        this.ctx.setLineDash([10, 5]);
         this.ctx.beginPath();
         for (const b of invalidBeams) {
             // i havent tested this because im too lazy to figure out how to bork things that badly
@@ -304,6 +311,7 @@ export class SoftbodyEditor {
             else this.ctx.lineTo(p2.position.x, p2.position.y);
         }
         this.ctx.stroke();
+        this.ctx.setLineDash([]);
         // action things
         if (this.action.mode == 'particle') {
             if (this.action.activeParticle != null) {

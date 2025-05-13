@@ -37,7 +37,7 @@ struct Metadata {
     beam_b_v: u32,
     beam_f_i: u32,
     max_particles: u32,
-    // 2 bytes pad due to vec2 alignment
+    max_beams: u32,
     gravity: vec2<f32>,
     border_elasticity: f32,
     border_friction: f32,
@@ -77,7 +77,7 @@ fn getMappedIndex(id: u32) -> u32 {
 @compute @workgroup_size(64, 1, 1)
 fn compute_main(thread: ComputeParams) {
     // beam sim (inversion may help speed up simulation by spreading beams/particles across more threads)
-    let beam_mapping_index = metadata.max_particles - thread.global_invocation_id.x - 1;
+    let beam_mapping_index = metadata.max_beams - thread.global_invocation_id.x - 1;
     if (beam_mapping_index < metadata.beam_i_c) {
         let index = getMappedIndex(metadata.max_particles + beam_mapping_index);
         var beam = beams[index];
@@ -173,5 +173,4 @@ fn compute_main(thread: ComputeParams) {
         // write
         particles_write[index] = particle;
     }
-    // delete particles
 }
