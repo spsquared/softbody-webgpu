@@ -1,3 +1,5 @@
+/// <reference types="@webgpu/types" />
+
 import { Vector2D } from "./engineMapping";
 
 export enum WGPUSoftbodyEngineMessageTypes {
@@ -37,56 +39,11 @@ export class WGPUSoftbodyEngine {
 
     private readonly userInput = {
         appliedForce: new Vector2D(0, 0),
-        mousePos: new Vector2D(0, 0),
+        rawMousePos: new Vector2D(0, 0),
         mouseActive: false,
         touchActive: false
     };
     private readonly heldKeys: Record<string, number> = {};
-    private readonly listeners: Partial<{
-        [E in keyof DocumentEventMap]: ((ev: DocumentEventMap[E]) => any) | [(ev: DocumentEventMap[E]) => any, AddEventListenerOptions]
-    }> = {
-            mousedown: (e) => {
-                if (e.button == 0) this.userInput.mouseActive = true;
-                this.updateMouse(e);
-            },
-            mouseup: (e) => {
-                if (e.button == 0) this.userInput.mouseActive = false;
-                this.updateMouse(e);
-            },
-            mousemove: (e) => {
-                this.updateMouse(e);
-            },
-            touchstart: (e) => {
-                this.userInput.touchActive = true;
-                this.updateMouse(e.touches[0]);
-            },
-            touchend: () => {
-                this.userInput.touchActive = false;
-                this.sendUserInput();
-            },
-            touchcancel: () => {
-                this.userInput.touchActive = false;
-                this.sendUserInput();
-            },
-            touchmove: [(e) => {
-                this.updateMouse(e.touches[0]);
-                e.preventDefault();
-            }, { passive: false }],
-            keydown: (e) => {
-                if (e.target instanceof HTMLElement && e.target.matches('input,button,textarea,select')) return;
-                this.heldKeys[e.key.toLowerCase()] = 1;
-                this.updateKeyboard();
-            },
-            keyup: (e) => {
-                this.heldKeys[e.key.toLowerCase()] = 0;
-                this.updateKeyboard();
-            },
-            blur: () => {
-                this.userInput.mouseActive = false;
-                this.updateKeyboard();
-            }
-        };
-
     private sendUserInput = ((fn) => {
         let timeout: NodeJS.Timeout = setTimeout(() => { });
         let lastUpdate = 0;
@@ -103,11 +60,11 @@ export class WGPUSoftbodyEngine {
             }
         };
     })(() => {
-        this.postMessageWithAck(WGPUSoftbodyEngineMessageTypes.INPUT, undefined, [this.userInput.appliedForce, this.userInput.mousePos, this.userInput.mouseActive || this.userInput.touchActive]);
+        this.postMessageWithAck(WGPUSoftbodyEngineMessageTypes.INPUT, undefined, [this.userInput.appliedForce, this.userInput.rawMousePos, this.userInput.mouseActive || this.userInput.touchActive]);
     });
     private updateMouse(e: MouseEvent | Touch) {
         const rect = this.canvas.getBoundingClientRect();
-        this.userInput.mousePos = new Vector2D((e.clientX - rect.x) / rect.width, 1 - (e.clientY - rect.y) / rect.height);
+        this.userInput.rawMousePos = new Vector2D((e.clientX - rect.x) / rect.width, 1 - (e.clientY - rect.y) / rect.height);
         this.sendUserInput();
     }
     private updateKeyboard() {
@@ -117,6 +74,48 @@ export class WGPUSoftbodyEngine {
         );
         this.sendUserInput();
     }
+    private readonly listeners: Partial<{ [E in keyof DocumentEventMap]: ((ev: DocumentEventMap[E]) => any) | [(ev: DocumentEventMap[E]) => any, AddEventListenerOptions] }> = {
+        mousedown: (e) => {
+            if (e.button == 0) this.userInput.mouseActive = true;
+            this.updateMouse(e);
+        },
+        mouseup: (e) => {
+            if (e.button == 0) this.userInput.mouseActive = false;
+            this.updateMouse(e);
+        },
+        mousemove: (e) => {
+            this.updateMouse(e);
+        },
+        touchstart: (e) => {
+            this.userInput.touchActive = true;
+            this.updateMouse(e.touches[0]);
+        },
+        touchend: () => {
+            this.userInput.touchActive = false;
+            this.sendUserInput();
+        },
+        touchcancel: () => {
+            this.userInput.touchActive = false;
+            this.sendUserInput();
+        },
+        touchmove: [(e) => {
+            this.updateMouse(e.touches[0]);
+            e.preventDefault();
+        }, { passive: false }],
+        keydown: (e) => {
+            if (e.target instanceof HTMLElement && e.target.matches('input,button,textarea,select')) return;
+            this.heldKeys[e.key.toLowerCase()] = 1;
+            this.updateKeyboard();
+        },
+        keyup: (e) => {
+            this.heldKeys[e.key.toLowerCase()] = 0;
+            this.updateKeyboard();
+        },
+        blur: () => {
+            this.userInput.mouseActive = false;
+            this.updateKeyboard();
+        }
+    };
 
     constructor(canvas: HTMLCanvasElement, resolution: number, opts?: Partial<WGPUSoftbodyEngineOptions>) {
         this.resolution = resolution;
@@ -129,7 +128,7 @@ export class WGPUSoftbodyEngine {
         offscreen.width = this.resolution;
         offscreen.height = this.resolution;
         this.worker = new Worker(new URL('./engineWorker', import.meta.url), { type: 'module' });
-        this.worker.addEventListener('error', (err) => { throw err.error; });
+        this.worker.addEventListener('error', (err) => { throw err.error ?? new Error(err.message ?? 'Error in engine worker'); });
         this.worker.addEventListener('message', (e) => this.onMessage(e));
         this.postMessage(WGPUSoftbodyEngineMessageTypes.INIT, { canvas: offscreen, options: opts }, [offscreen]);
         document.addEventListener('visibilitychange', () => this.postMessage(WGPUSoftbodyEngineMessageTypes.VISIBILITY_CHANGE, document.hidden));
@@ -185,8 +184,8 @@ export class WGPUSoftbodyEngine {
     async saveSnapshot(): Promise<ArrayBuffer> {
         return await this.postMessageWithAck<ArrayBuffer>(WGPUSoftbodyEngineMessageTypes.SNAPSHOT_SAVE);
     }
-    async loadSnapshot(buf: ArrayBuffer): Promise<void> {
-        await this.postMessageWithAck<void>(WGPUSoftbodyEngineMessageTypes.SNAPSHOT_LOAD, undefined, buf, [buf]);
+    async loadSnapshot(buf: ArrayBuffer): Promise<boolean> {
+        return await this.postMessageWithAck<boolean>(WGPUSoftbodyEngineMessageTypes.SNAPSHOT_LOAD, undefined, buf);
     }
 
     private running: boolean = true;
@@ -195,6 +194,7 @@ export class WGPUSoftbodyEngine {
         while (this.running) {
             await new Promise<void>((resolve) => {
                 if (!document.hidden) window.requestAnimationFrame(async () => {
+                    this.ctx.resetTransform();
                     this.ctx.drawImage(this.simCanvas, 0, 0);
                     this.ctx.fillStyle = '#FFFFFF';
                     this.ctx.font = '14px monospace';

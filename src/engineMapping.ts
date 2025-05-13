@@ -1,3 +1,5 @@
+/// <reference types="@webgpu/types" />
+
 import { WGPUSoftbodyEnginePhysicsConstants } from "./engine";
 
 type TypedArray = Uint8Array | Int8Array | Uint16Array | Int16Array | Uint32Array | Int32Array | Float32Array | Float64Array;
@@ -50,6 +52,10 @@ export class Vector2D {
         return this.x * o.y - this.y * o.x;
     }
 
+    clamp(min: Vector2D, max: Vector2D): Vector2D {
+        return new Vector2D(Math.max(min.x, Math.min(this.x, max.x)), Math.max(min.y, Math.min(this.y, max.y)));
+    }
+
     toString(): string {
         return `Vector2D<${this.x}, ${this.y}>`;
     }
@@ -99,14 +105,6 @@ export class Particle {
         this.acceleration = acceleration ?? Vector2D.zero;
     }
 
-    /**
-     * Write a particle to a particular location.
-     * Mapping buffer at this particle's `id` will point to `index`.'
-     * 
-     * @param pBuf Particle data buffer
-     * @param mBuf Mapping buffer
-     * @param index Location in the particle buffer (particle `n`)
-     */
     to(pBuf: ArrayBuffer, mBuf: Uint16Array, index: number): void {
         mBuf[this.id] = index;
         const f32View = new Float32Array(pBuf, index * Particle.stride, Particle.stride / Float32Array.BYTES_PER_ELEMENT);
@@ -115,14 +113,6 @@ export class Particle {
         this.acceleration.to(f32View, 4);
     }
 
-    /**
-     * Read a particle from a particular location.
-     * Uses the mapping buffer and `id` of the target to find the particle in the data buffer.
-     * 
-     * @param pBuf Particle data buffer
-     * @param mBuf Mapping buffer
-     * @param id Location in the mapping buffer (id `n`)
-     */
     static from(pBuf: ArrayBuffer, mBuf: Uint16Array, id: number): Particle {
         const index = mBuf[id];
         const f32View = new Float32Array(pBuf, index * Particle.stride, Particle.stride / Float32Array.BYTES_PER_ELEMENT);
@@ -163,15 +153,6 @@ export class Beam {
         this.damp = damp;
     }
 
-    /**
-     * Write a beam to a particular location.
-     * Mapping buffer at this beam's `id` will point to `index`.
-     * 
-     * @param bBuf Beam data buffer
-     * @param mBuf Mapping buffer
-     * @param index Location in the beam buffer (beam `n`)
-     * @param mBufOffset Location in the mapping buffer that beam mappings begin at
-     */
     to(bBuf: ArrayBuffer, mBuf: Uint16Array, index: number, mBufOffset: number): void {
         mBuf[mBufOffset + this.id] = index;
         // need to get index of particles in particle buffers first by their id
@@ -187,19 +168,11 @@ export class Beam {
         f32View[4] = this.damp;
     }
 
-    /**
-     * Read a beam from a particular location.
-     * Uses the mapping buffer and `id` of the target to find the beam in the data buffer.
-     * *Note: this function is **very costly** as it searches the entire mapping buffer to find particle ID.*
-     * @param bBuf beam data buffer
-     * @param mBuf Mapping buffer
-     * @param id Location in the mapping buffer (id `n`)
-     * @param mBufOffset Location in the mapping buffer that beam mappings begin at
-     */
     static from(bBuf: ArrayBuffer, mBuf: Uint16Array, id: number, mBufOffset: number): Beam {
         const index = mBuf[mBufOffset + id];
         const uint16View = new Uint16Array(bBuf, index * Beam.stride, Beam.stride / Uint16Array.BYTES_PER_ELEMENT);
         const f32View = new Float32Array(bBuf, index * Beam.stride, Beam.stride / Float32Array.BYTES_PER_ELEMENT);
+        // quite costly, but there isn't an easy good solution
         const idA = mBuf.indexOf(uint16View[0]);
         const idB = mBuf.indexOf(uint16View[1]);
         return new Beam(id, idA, idB, f32View[1], f32View[3], f32View[4], f32View[2]);
@@ -348,8 +321,9 @@ export class BufferMapper {
     readonly meta: Metadata;
     readonly maxParticles: number;
 
-    private readonly particles: Set<Particle> = new Set();
-    private readonly beams: Set<Beam> = new Set();
+    // use map by id to prevent particles/beams with the same ID
+    private readonly particles: Map<number, Particle> = new Map();
+    private readonly beams: Map<number, Beam> = new Map();
     private readonly mappingUint16View: Uint16Array;
 
     /**
@@ -401,7 +375,7 @@ export class BufferMapper {
      * Also writes the simulation state to buffers.
      * @param buf Snapshot `ArrayBuffer`
      */
-    loadSnapshotbuffer(buf: ArrayBuffer): void {
+    loadSnapshotbuffer(buf: ArrayBuffer): boolean {
         const buffer = buf;
         // probably the least efficient and least readable way to extract these buffers
         const uint16View = new Uint16Array(buffer, 0, 5);
@@ -411,6 +385,8 @@ export class BufferMapper {
         const beamMappingSize = uint16View[2];
         const beamDataSize = uint16View[3];
         const metadataSize = uint16View[4];
+        // simulation buffers not large enough to contain this snapshot (if from a different device with more resources)
+        if (particleMappingSize > this.maxParticles || beamMappingSize > this.maxParticles) return false;
         new Float32Array(this.metadata, 48, metadataSize / Float32Array.BYTES_PER_ELEMENT).set(new Float32Array(buffer, lenSize, metadataSize / Float32Array.BYTES_PER_ELEMENT));
         const baseOffset = lenSize + metadataSize;
         new Uint8Array(this.mapping).set(new Uint8Array(buffer, baseOffset, particleMappingSize), 0);
@@ -421,23 +397,36 @@ export class BufferMapper {
         this.meta.particleCount = particleMappingSize / Uint16Array.BYTES_PER_ELEMENT;
         this.meta.beamCount = beamMappingSize / Uint16Array.BYTES_PER_ELEMENT;
         this.loadState();
+        return true;
     }
 
     addParticle(p: Particle): boolean {
-        if (this.particles.size == this.maxParticles) return false;
-        this.particles.add(p);
+        if (this.particles.size == this.maxParticles || this.particles.has(p.id)) return false;
+        this.particles.set(p.id, p);
         return true;
     }
     addBeam(b: Beam): boolean {
-        if (this.beams.size == this.maxParticles) return false;
-        this.beams.add(b);
+        if (this.beams.size == this.maxParticles || this.beams.has(b.id)) return false;
+        this.beams.set(b.id, b);
         return true;
     }
-    removeParticle(p: Particle): boolean {
-        return this.particles.delete(p);
+    removeParticle(p: Particle | number): boolean {
+        return this.particles.delete(typeof p == 'number' ? p : p.id);
     }
-    removeBeam(b: Beam): boolean {
-        return this.beams.delete(b);
+    removeBeam(b: Beam | number): boolean {
+        return this.beams.delete(typeof b == 'number' ? b : b.id);
+    }
+    findParticle(id: number): Particle | null {
+        return this.particles.get(id) ?? null;
+    }
+    findBeam(id: number): Beam | null {
+        return this.beams.get(id) ?? null;
+    }
+    get particleSet(): Set<Particle> {
+        return new Set(this.particles.values());
+    }
+    get beamSet(): Set<Beam> {
+        return new Set(this.beams.values());
     }
     clear() {
         this.particles.clear();
@@ -461,8 +450,8 @@ export class BufferMapper {
     loadState(): void {
         this.clear();
         const pCount = this.meta.particleCount;
-        for (let i = 0; i < pCount; i++) this.particles.add(Particle.from(this.particleData, this.mappingUint16View, i));
+        for (let i = 0; i < pCount; i++) this.particles.set(i, Particle.from(this.particleData, this.mappingUint16View, i));
         const bCount = this.meta.beamCount;
-        for (let i = 0; i < bCount; i++) this.beams.add(Beam.from(this.beamData, this.mappingUint16View, i, this.maxParticles));
+        for (let i = 0; i < bCount; i++) this.beams.set(i, Beam.from(this.beamData, this.mappingUint16View, i, this.maxParticles));
     }
 }

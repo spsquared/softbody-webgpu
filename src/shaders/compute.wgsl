@@ -134,11 +134,10 @@ fn compute_main(thread: ComputeParams) {
                 particle.v -= impulse_normal * normal + impulse_tangent * tangent;
                 // offset thing from verlet integration style collisions
                 let clip_shift = normal * (particle_radius * 2 - dist) / 2;
+                // unfortunately these "static" forces can't be added to acceleration due to floating-point causing instability
                 particle.p -= clip_shift;
-                // particle.v -= clip_shift;
-                // particle.a -= clip_shift / time_step;
-                // atomicAdd(&particle_forces[other_index * 2], i32(clip_shift.x / time_step * particle_force_scale));
-                // atomicAdd(&particle_forces[other_index * 2 + 1], i32(clip_shift.y / time_step * particle_force_scale));
+                // particle.v -= clip_shift / time_step;
+                // particle.a -= clip_shift / time_step / time_step;
             }
         }
         // gravity

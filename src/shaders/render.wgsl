@@ -41,9 +41,10 @@ fn vertex_particle_main(vertex: ParticleVertexIn) -> ParticleVertexOut {
 
 const particle_color: vec4<f32> = vec4<f32>(0.0, 0.7, 1.0, 1.0) * 0.5;
 const particle_outline: vec4<f32> = vec4<f32>(1.0, 1.0, 1.0, 1.0) * 1.0;
+const particle_outline_edge: f32 = 0.8;
 @fragment
 fn fragment_particle_main(frag: ParticleFragIn) -> @location(0) vec4<f32> {
-    if (distance(frag.position, frag.center) < particle_radius * 0.8) {
+    if (distance(frag.position, frag.center) < particle_radius * particle_outline_edge) {
         return particle_color;
     }
     if (distance(frag.position, frag.center) < particle_radius) {

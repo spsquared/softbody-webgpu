@@ -1,10 +1,21 @@
-/// <reference types="@webgpu/types" />                                                                                                                                                        
+/// <reference types="@webgpu/types" />
 
 import { WGPUSoftbodyEngineMessageTypes, WGPUSoftbodyEngineOptions } from './engine';
 import { Beam, BufferMapper, Particle, Vector2D } from './engineMapping';
 
 type BindGroupPair = { readonly layout: GPUBindGroupLayout, readonly group: GPUBindGroup };
 
+/**
+ * Worker thread singleton class that handles simulation & drawing through WebGPU. Softbody objects
+ * consist of "particles" - simple circles with elastic collisions with each other and the edge of
+ * the simulation space ("grid") - and "beams" - spring/damp relations between particles (very similar
+ * to BeamNG's simulation system of nodes & beams) that attempt to maintain a target distance (spring)
+ * and resist changes in distance (damp).
+ * 
+ * Simulation is done using compute shaders, with one thread assigned to each ID (particle & beam)
+ * (note many threads will often do nothing if there's no particle/beam there). Multiple subticks
+ * are run to increase accuracy of simulation.
+ */
 class WGPUSoftbodyEngineWorker {
     private static sInstance: WGPUSoftbodyEngineWorker | null = null;
 
@@ -93,16 +104,16 @@ class WGPUSoftbodyEngineWorker {
             this.ctx.configure({
                 device: gpu,
                 format: this.textureFormat,
-                alphaMode: 'premultiplied'
+                alphaMode: 'premultiplied',
             });
             console.log('GPU limits', gpu.limits);
             resolve(gpu);
         });
-        // create buffers
+        // create resources
         this.bufferMapper = new Promise<BufferMapper>(async (resolve) => {
             const ad = await adapter;
             if (ad === null) throw new TypeError('GPU adapter not available');
-            resolve(new BufferMapper(ad.limits.maxBufferSize));
+            resolve(new BufferMapper(ad.limits.maxStorageBufferBindingSize));
         });
         this.modules = new Promise(async (resolve) => {
             const device = await this.device;
@@ -499,9 +510,9 @@ class WGPUSoftbodyEngineWorker {
             case WGPUSoftbodyEngineMessageTypes.SNAPSHOT_LOAD: {
                 const bufferMapper = await this.bufferMapper;
                 const buffer = e.data.data as ArrayBuffer;
-                bufferMapper.loadSnapshotbuffer(buffer);
-                await this.writeBuffers();
-                this.postMessage(WGPUSoftbodyEngineMessageTypes.SNAPSHOT_LOAD);
+                const res = bufferMapper.loadSnapshotbuffer(buffer);
+                if (res) await this.writeBuffers();
+                this.postMessage(WGPUSoftbodyEngineMessageTypes.SNAPSHOT_LOAD, res);
             }
                 break;
         }
@@ -626,72 +637,6 @@ class WGPUSoftbodyEngineWorker {
         return this.frameTimes.length;
     }
     private async startDraw(): Promise<void> {
-        // TESTING CODE
-        // TESTING CODE
-        // TESTING CODE
-        const bufferMapper = await this.bufferMapper;
-        bufferMapper.loadState();
-        let i = 0, j = 0;
-        // beam tests
-        // bufferMapper.addParticle(new Particle(i++, new Vector2D(800, 700), new Vector2D(0, 10)));
-        // bufferMapper.addParticle(new Particle(i++, new Vector2D(700, 700), new Vector2D(0, 20)));
-        // bufferMapper.addParticle(new Particle(i++, new Vector2D(650, 600), new Vector2D(10, 10)));
-        // bufferMapper.addParticle(new Particle(i++, new Vector2D(550, 600), new Vector2D(-10, 30)));
-        // bufferMapper.addBeam(new Beam(j++, 0, 1, 100, 0.2, 20));
-        // bufferMapper.addBeam(new Beam(j++, 2, 3, 100, 0.2, 20));
-        // collision tests
-        // bufferMapper.addParticle(new Particle(i++, new Vector2D(550, 300), new Vector2D(0, 0)));
-        // bufferMapper.addParticle(new Particle(i++, new Vector2D(568, 400), new Vector2D(0, 0)));
-        // bufferMapper.addParticle(new Particle(i++, new Vector2D(400, 300), new Vector2D(1, 0)));
-        // bufferMapper.addParticle(new Particle(i++, new Vector2D(440, 300), new Vector2D(-1, 0)));
-        function addRectangle(ox: number, oy: number, d: number, w: number, h: number, bs: number, bd: number) {
-            for (let x = 0; x < w; x++) {
-                for (let y = 0; y < h; y++) {
-                    let b = i;
-                    bufferMapper.addParticle(new Particle(i++, new Vector2D(x * d + ox, y * d + oy)));
-                    if (y < h - 1) bufferMapper.addBeam(new Beam(j++, b, b + 1, d, bs, bd));
-                    if (x < w - 1) bufferMapper.addBeam(new Beam(j++, b, b + h, d, bs, bd));
-                    if (y < h - 1 && x < w - 1) bufferMapper.addBeam(new Beam(j++, b, b + h + 1, Math.SQRT2 * d, bs, bd));
-                    if (y > 0 && x < w - 1) bufferMapper.addBeam(new Beam(j++, b, b + h - 1, Math.SQRT2 * d, bs, bd));
-                }
-            }
-        }
-        // lines
-        // addRectangle(10, 990, 25, 10, 1, 10, 100);
-        // CUBES
-        // addRectangle(180, 10, 60, 2, 2, 1, 50);
-        // addRectangle(40, 10, 60, 2, 2, 1, 50);
-        // addRectangle(20, 120, 30, 9, 4, 50, 700);
-        // addRectangle(900, 200, 30, 2, 20, 500, 500);
-        // addRectangle(700, 400, 40, 5, 5, 2, 50);
-        // lol staircase
-        const qa = 100;
-        const qb = 100;
-        let guh = i;
-        for (let q = 0; q < 10; q++) {
-            addRectangle(10 + 60 * q, 10, 30, 2, 20 - q * 2, qa, qb);
-        }
-        for (let q = 0; q < 9; q++) {
-            const h = 20 - q * 2;
-            for (let v = h; v < h * 2 - 2; v++) {
-                bufferMapper.addBeam(new Beam(j++, guh + v, guh + h + v, 30, qa, qb));
-                if (v > h) {
-                    bufferMapper.addBeam(new Beam(j++, guh + v, guh + h + v - 1, 30 * Math.SQRT2, qa, qb));
-                }
-                if (v < h * 2 - 3) {
-                    bufferMapper.addBeam(new Beam(j++, guh + v, guh + h + v + 1, 30 * Math.SQRT2, qa, qb));
-                }
-            }
-            guh += 2 * h;
-        }
-        addRectangle(20, 900, 50, 2, 2, 0.05, 10);
-        addRectangle(20, 700, 50, 2, 2, 0.1, 10);
-        // spam
-        // for (; i < 100;) {
-        //     bufferMapper.addParticle(new Particle(i++, new Vector2D(Math.random() * this.gridSize, Math.random() * this.gridSize), new Vector2D(Math.random() * 20 - 10, Math.random() * 20 - 10)))
-        // }
-        bufferMapper.writeState();
-        await this.writeBuffers();
         while (this.running) {
             await new Promise<void>((resolve) => {
                 if (this.visible) requestAnimationFrame(async () => {
