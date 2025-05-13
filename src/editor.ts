@@ -1,7 +1,7 @@
 /// <reference types="@webgpu/types" />
 
 import { WGPUSoftbodyEngineOptions } from "./engine";
-import { Beam, BufferMapper, Vector2D } from "./engineMapping";
+import { Beam, BufferMapper, Particle, Vector2D } from "./engineMapping";
 
 export class SoftbodyEditor {
     readonly resolution: number;
@@ -12,8 +12,7 @@ export class SoftbodyEditor {
     private readonly userInput = {
         rawMousePos: new Vector2D(0, 0),
         mousePos: new Vector2D(0, 0),
-        mouseActive: false,
-        touchActive: false
+        lastMousePos: new Vector2D(0, 0)
     };
     private readonly heldKeys: Record<string, number> = {};
     private updateMouse(e: MouseEvent | Touch) {
@@ -22,29 +21,32 @@ export class SoftbodyEditor {
         this.userInput.mousePos = this.userInput.rawMousePos.mult(this.gridSize / this.camera.s).add(this.camera.p);
     }
     private updateKeyboard() {
-        // buh
+        this.action.deleteMode = this.heldKeys['shift'] == 1;
+        this.action.forceAddMode = this.heldKeys['ctrl'] == 1;
     }
     private readonly listeners: Partial<{ [E in keyof DocumentEventMap]: ((ev: DocumentEventMap[E]) => any) | [(ev: DocumentEventMap[E]) => any, AddEventListenerOptions] }> = {
         mousedown: (e) => {
-            if (e.button == 0) this.userInput.mouseActive = true;
             this.updateMouse(e);
+            if (e.target instanceof HTMLElement && e.target.matches('input,button,textarea,select')) return;
+            this.startAction();
         },
         mouseup: (e) => {
-            if (e.button == 0) this.userInput.mouseActive = false;
             this.updateMouse(e);
+            this.endAction();
         },
         mousemove: (e) => {
             this.updateMouse(e);
         },
         touchstart: (e) => {
-            this.userInput.touchActive = true;
             this.updateMouse(e.touches[0]);
+            if (e.target instanceof HTMLElement && e.target.matches('input,button,textarea,select')) return;
+            this.startAction();
         },
         touchend: () => {
-            this.userInput.touchActive = false;
+            this.endAction();
         },
         touchcancel: () => {
-            this.userInput.touchActive = false;
+            this.endAction();
         },
         touchmove: [(e) => {
             this.updateMouse(e.touches[0]);
@@ -60,7 +62,7 @@ export class SoftbodyEditor {
             this.updateKeyboard();
         },
         blur: () => {
-            this.userInput.mouseActive = false;
+            this.endAction();
             this.updateKeyboard();
         }
     };
@@ -114,7 +116,106 @@ export class SoftbodyEditor {
     private readonly fpsHistory: number[] = [];
     private lastFrame: number = performance.now();
     private running: boolean = true;
+    private readonly action: {
+        // currently hovered particle - used to select what particle to move
+        hoverParticle: Particle | null
+        // particle being modified (moving/adding beam to)
+        activeParticle: Particle | null
+        // adding particle allows setting velocity, so this is needed
+        activeParticleType: 'add' | 'move'
+        // mode (switching modes should cancel the current action)
+        mode: 'particle' | 'beam'
+        // self-explanatory
+        deleteMode: boolean
+        // if want to add but game wants to hover over some particle
+        forceAddMode: boolean
+    } = {
+            hoverParticle: null,
+            activeParticle: null,
+            activeParticleType: 'add',
+            mode: 'particle',
+            deleteMode: false,
+            forceAddMode: false
+        };
+    private async startAction(): Promise<void> {
+        const bufferMapper = await this.bufferMapper;
+        // target particle or something
+        if (this.action.mode == 'particle') {
+            if (this.action.deleteMode) {
+                // deletey deleters
+                if (this.action.hoverParticle != null) {
+                    bufferMapper.removeParticle(this.action.hoverParticle);
+                    this.action.hoverParticle = null;
+                }
+            } else if (this.action.forceAddMode || this.action.hoverParticle == null) {
+                // add particle (but only if mouse on grid)
+                if (this.userInput.rawMousePos.x >= 0 && this.userInput.rawMousePos.x <= 1 && this.userInput.rawMousePos.y >= 0 && this.userInput.rawMousePos.y <= 1) {
+                    this.action.activeParticle = new Particle(bufferMapper.firstEmptyParticleId, this.userInput.mousePos);
+                    bufferMapper.addParticle(this.action.activeParticle);
+                    this.action.activeParticleType = 'add';
+                }
+            } else if (this.action.hoverParticle != null) {
+                // move
+                this.action.activeParticle = this.action.hoverParticle;
+                this.action.activeParticleType = 'move';
+            }
+        } else if (this.action.mode == 'beam') {
+
+        }
+        // oof
+    }
+    private async endAction(): Promise<void> {
+        const bufferMapper = await this.bufferMapper;
+        if (this.action.mode == 'particle') {
+            if (this.action.deleteMode) {
+                // nothing (only delete on mouse down)
+            } else if (this.action.activeParticle != null) {
+                if (this.action.activeParticleType == 'add') {
+                    // set velocity
+                    this.action.activeParticle.velocity = this.userInput.mousePos.sub(this.action.activeParticle.position);
+                    this.action.activeParticle = null;
+                } else if (this.action.activeParticleType == 'move') {
+                    // stop moving
+                    this.action.activeParticle = null;
+                }
+            }
+        } else if (this.action.mode == 'beam') {
+
+        }
+    }
+    private async updateAction(): Promise<void> {
+        const bufferMapper = await this.bufferMapper;
+        // closest particle
+        const particles = bufferMapper.particleSet;
+        const margin = Math.max(1, 3 - (3 * this.camera.s / 10));
+        this.action.hoverParticle = null;
+        let closestDist = Infinity;
+        for (const p of particles) {
+            const dist = p.position.sub(this.userInput.mousePos).magnitude;
+            if (dist < closestDist && dist < this.particleRadius * margin) {
+                this.action.hoverParticle = p;
+                closestDist = dist;
+            }
+        }
+        if (this.action.mode == 'particle') {
+            if (this.action.deleteMode) {
+                // nothing (only delete on mouse down)
+            } else if (this.action.activeParticle != null) {
+                if (this.action.activeParticleType == 'add') {
+                    // setting velocity (nothing now)
+                } else if (this.action.activeParticleType == 'move') {
+                    // move it or something
+                    this.action.activeParticle.position = this.action.activeParticle.position.add(this.userInput.mousePos.sub(this.userInput.lastMousePos));
+                }
+            }
+        } else if (this.action.mode == 'beam') {
+
+        }
+    }
     private async updateFrame(): Promise<void> {
+        // update mouse position in case camera moved
+        this.userInput.mousePos = this.userInput.rawMousePos.mult(this.gridSize / this.camera.s).add(this.camera.p);
+        // random update things
         const now = performance.now();
         const deltaTime = now - this.lastFrame;
         let ocs = this.camera.s;
@@ -138,8 +239,9 @@ export class SoftbodyEditor {
         ));
         this.camera.p = this.camera.p.clamp(new Vector2D(0, 0), new Vector2D(this.gridSize - this.gridSize / this.camera.s, this.gridSize - this.gridSize / this.camera.s));
         this.lastFrame = now;
+        await this.updateAction();
     }
-    private async frame(): Promise<void> {
+    private async drawFrame(): Promise<void> {
         const bufferMapper = await this.bufferMapper;
         this.ctx.resetTransform();
         this.ctx.fillStyle = `rgba(0, 0, 0, ${this.blur})`;
@@ -153,12 +255,13 @@ export class SoftbodyEditor {
         const particles = bufferMapper.particleSet;
         this.ctx.fillStyle = `rgba(${0 * 255}, ${0.7 * 255}, ${1 * 255}, 0.5)`;
         this.ctx.strokeStyle = `rgba(${1 * 255}, ${1 * 255}, ${1 * 255}, 1.0)`;
-        const r = this.particleRadius * 0.9; // n/2 + 0.5
-        this.ctx.lineWidth = this.particleRadius * 0.2 * scale; // (1 - n) * r / w * s
+        const pRadius = this.particleRadius * 0.9; // n/2 + 0.5
+        const pEdgeThickness = this.particleRadius * 0.2 * scale; // (1 - n) * r / w * s
+        this.ctx.lineWidth = pEdgeThickness;
         this.ctx.beginPath();
         for (const p of particles) {
-            this.ctx.moveTo(p.position.x + r, p.position.y);
-            this.ctx.arc(p.position.x, p.position.y, r, 0, 2 * Math.PI);
+            this.ctx.moveTo(p.position.x + pRadius, p.position.y);
+            this.ctx.arc(p.position.x, p.position.y, pRadius, 0, 2 * Math.PI);
         }
         this.ctx.fill();
         this.ctx.stroke();
@@ -173,7 +276,7 @@ export class SoftbodyEditor {
         this.ctx.stroke();
         // beams (will have stress color at some point)
         const beams = bufferMapper.beamSet;
-        this.ctx.strokeStyle = `rgba(${1 * 255}, ${1 * 255}, ${1 * 255}, 1.0)`;
+        this.ctx.strokeStyle = 'rgba(255, 255, 255, 1)';
         this.ctx.lineWidth = 1;
         const invalidBeams = new Set<Beam>();
         this.ctx.beginPath();
@@ -188,6 +291,51 @@ export class SoftbodyEditor {
             }
         }
         this.ctx.stroke();
+        // invalid beams
+        this.ctx.strokeStyle = 'rgba(255, 0, 0, 1)';
+        this.ctx.beginPath();
+        for (const b of invalidBeams) {
+            // i havent tested this because im too lazy to figure out how to bork things that badly
+            const p1 = typeof b.a == 'number' ? bufferMapper.findParticle(b.a) : b.a;
+            const p2 = typeof b.b == 'number' ? bufferMapper.findParticle(b.b) : b.b;
+            if (p1 == null) this.ctx.moveTo(0, 0);
+            else this.ctx.moveTo(p1.position.x, p1.position.y);
+            if (p2 == null) this.ctx.lineTo(0, 0);
+            else this.ctx.lineTo(p2.position.x, p2.position.y);
+        }
+        this.ctx.stroke();
+        // action things
+        if (this.action.mode == 'particle') {
+            if (this.action.activeParticle != null) {
+                if (this.action.activeParticleType == 'add') {
+                    // adding velocity to new particle
+                    this.ctx.strokeStyle = '#FF0000';
+                    this.ctx.lineWidth = 2;
+                    this.ctx.beginPath();
+                    this.ctx.moveTo(this.action.activeParticle.position.x, this.action.activeParticle.position.y);
+                    this.ctx.lineTo(this.userInput.mousePos.x, this.userInput.mousePos.y);
+                    this.ctx.stroke();
+                } else if (this.action.activeParticleType == 'move') {
+                    // nothing
+                }
+                this.ctx.strokeStyle = '#00EE00';
+                this.ctx.lineWidth = pEdgeThickness * 3;
+                this.ctx.beginPath();
+                this.ctx.moveTo(this.action.activeParticle.position.x + pRadius, this.action.activeParticle.position.y);
+                this.ctx.arc(this.action.activeParticle.position.x, this.action.activeParticle.position.y, pRadius, 0, 2 * Math.PI);
+                this.ctx.stroke();
+            } else if (this.action.hoverParticle != null && !this.action.forceAddMode) {
+                // no active particle & not adding particle, show closest hovered particle
+                this.ctx.strokeStyle = '#FFFF00';
+                this.ctx.lineWidth = pEdgeThickness * 3;
+                this.ctx.beginPath();
+                this.ctx.moveTo(this.action.hoverParticle.position.x + pRadius, this.action.hoverParticle.position.y);
+                this.ctx.arc(this.action.hoverParticle.position.x, this.action.hoverParticle.position.y, pRadius, 0, 2 * Math.PI);
+                this.ctx.stroke();
+            }
+        } else if (this.action.mode == 'beam') {
+
+        }
         // return to canvas space
         this.ctx.resetTransform();
         // framerate stuff
@@ -200,7 +348,8 @@ export class SoftbodyEditor {
         this.ctx.textAlign = 'left';
         this.ctx.textBaseline = 'top';
         this.ctx.fillText(`FPS: ${this.fps}`, 8, 8);
-
+        // last frame mouse position
+        this.userInput.lastMousePos = this.userInput.mousePos;
     }
     get fps(): number {
         return this.frameTimes.length;
@@ -210,7 +359,7 @@ export class SoftbodyEditor {
             await new Promise<void>((resolve) => {
                 if (this.visible) requestAnimationFrame(async () => {
                     await this.updateFrame();
-                    await this.frame();
+                    await this.drawFrame();
                     resolve();
                 });
                 else setTimeout(() => resolve(), 100);

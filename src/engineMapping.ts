@@ -422,6 +422,18 @@ export class BufferMapper {
     findBeam(id: number): Beam | null {
         return this.beams.get(id) ?? null;
     }
+    get firstEmptyParticleId(): number {
+        for (let i = 0; i < this.maxParticles; i++) {
+            if (!this.particles.has(i)) return i;
+        }
+        return -1;
+    }
+    get firstEmptyBeamId(): number {
+        for (let i = 0; i < this.maxParticles; i++) {
+            if (!this.beams.has(i)) return i;
+        }
+        return -1;
+    }
     get particleSet(): Set<Particle> {
         return new Set(this.particles.values());
     }

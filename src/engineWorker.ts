@@ -569,7 +569,7 @@ class WGPUSoftbodyEngineWorker {
         mouseActive: false,
         lastFrame: performance.now()
     };
-    private async frame(): Promise<void> {
+    private async drawFrame(): Promise<void> {
         const device = await this.device;
         const buffers = await this.buffers;
         const bufferMapper = await this.bufferMapper;
@@ -640,7 +640,7 @@ class WGPUSoftbodyEngineWorker {
         while (this.running) {
             await new Promise<void>((resolve) => {
                 if (this.visible) requestAnimationFrame(async () => {
-                    await this.frame();
+                    await this.drawFrame();
                     resolve();
                 });
                 else setTimeout(() => resolve(), 100);
