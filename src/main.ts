@@ -151,7 +151,11 @@ applyConstantsButton.addEventListener('click', async () => {
 // button things to prevent race conditions (sim buttons can be disabled separately but "all" can force them disabled too)
 const simulationButtons = [loadSnapshotButton, saveSnapshotButton, applyOptionsButton, applyConstantsButton];
 const allButtons = [...document.querySelectorAll('#editButtonsGrid1>input,#editButtonsGrid2>input'), ...simulationButtons] as HTMLInputElement[];
-const editButtonsDivs = [document.getElementById('editButtonsGrid1') as HTMLDivElement, document.getElementById('editButtonsGrid2') as HTMLDivElement];
+const editButtonsDivs = [
+    document.getElementById('editButtonsGrid1') as HTMLDivElement,
+    document.getElementById('editButtonsGrid2') as HTMLDivElement,
+    document.getElementById('editButtonsBeamSettings') as HTMLDivElement
+];
 let allButtonsDisabled = false;
 let simulationButtonsDisabled = false;
 function disableAllButtons() {
@@ -257,6 +261,8 @@ const editor: {
         return mapper.createSnapshotBuffer();
     })()
 };
+// immediately stop editor instance (easier than null typing oof)
+editor.instance.destroy();
 async function resetToInitial() {
     disableAllButtons();
     await simulation.instance.loadSnapshot(editor.initialState);
@@ -280,6 +286,8 @@ async function switchToEditor() {
     await editor.instance.load(editor.initialState);
     editButtonsDivs[0].style.display = 'none';
     editButtonsDivs[1].style.display = '';
+    editButtonsDivs[2].style.display = 'none';
+    editModeToggle.value = 'Edit: Beams';
     enableAllButtons();
 }
 async function switchToSimulation() {
@@ -290,14 +298,30 @@ async function switchToSimulation() {
     await simulation.instance.loadSnapshot(editor.initialState);
     editButtonsDivs[0].style.display = '';
     editButtonsDivs[1].style.display = 'none';
+    editButtonsDivs[2].style.display = 'none';
     enableSimulationButtons();
     enableAllButtons();
 }
-document.getElementById('resetButton')?.addEventListener('click', () => !allButtonsDisabled && resetToInitial());
-document.getElementById('editInitialButton')?.addEventListener('click', () => !allButtonsDisabled && switchToEditor());
-document.getElementById('editCurrentButton')?.addEventListener('click', () => !allButtonsDisabled && setInitialState().then(() => switchToEditor()));
-document.getElementById('simulateButton')?.addEventListener('click', () => !allButtonsDisabled && switchToSimulation());
+document.getElementById('resetButton')!.addEventListener('click', () => !allButtonsDisabled && resetToInitial());
+document.getElementById('editInitialButton')!.addEventListener('click', () => !allButtonsDisabled && switchToEditor());
+document.getElementById('editCurrentButton')!.addEventListener('click', () => !allButtonsDisabled && setInitialState().then(() => switchToEditor()));
+document.getElementById('simulateButton')!.addEventListener('click', () => !allButtonsDisabled && switchToSimulation());
 resetToInitial();
 editButtonsDivs[1].style.display = 'none';
-// immediately stop editor instance (easier than null typing oof)
-editor.instance.destroy();
+// some spaghetti
+const editModeToggle = document.getElementById('editModeToggleButton') as HTMLInputElement;
+editModeToggle.addEventListener('click', () => {
+    if (allButtonsDisabled) return;
+    if (editor.instance.editMode == 'particle') {
+        editor.instance.editMode = 'beam';
+        editModeToggle.value = 'Edit: Beams';
+    } else {
+        editor.instance.editMode = 'particle';
+        editModeToggle.value = 'Edit: Particles';
+    }
+});
+document.addEventListener('keydown', (e) => {
+    if (allButtonsDisabled) return;
+    if (e.key.toLowerCase() == 'enter') editModeToggle.click();
+})
+editButtonsDivs[2].style.display = 'none';

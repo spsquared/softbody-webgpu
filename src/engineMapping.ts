@@ -4,8 +4,6 @@ import { WGPUSoftbodyEnginePhysicsConstants } from "./engine";
 
 type TypedArray = Uint8Array | Int8Array | Uint16Array | Int16Array | Uint32Array | Int32Array | Float32Array | Float64Array;
 
-// THERE IS NO VALIDATION FOR ANYTHING, IF SOMETHING GOES WRONG THERE WILL BE WEIRD ERRORS
-
 /**
  * Defines buffer structs for placing vectors into GPU buffers.
  */
@@ -93,6 +91,7 @@ export class Particle {
      */
     static readonly stride = 24;
 
+    /**IDs are transient and will be reassigned on write to buffer */
     readonly id: number;
     position: Vector2D;
     velocity: Vector2D;
@@ -135,6 +134,7 @@ export class Beam {
      */
     static readonly stride = 20;
 
+    /**IDs are transient and will be reassigned on write to buffer */
     readonly id: number;
     readonly a: number | Particle;
     readonly b: number | Particle;
@@ -323,9 +323,10 @@ export class BufferMapper {
     readonly maxParticles: number;
     readonly maxBeams: number;
 
-    // use map by id to prevent particles/beams with the same ID
+    // use map by id to prevent particles/beams with the same ID (+store beams for each particle)
     private readonly particles: Map<number, Particle> = new Map();
     private readonly beams: Map<number, Beam> = new Map();
+    private readonly particleBeams: Map<number, Set<Beam>> = new Map();
     private readonly mappingUint16View: Uint16Array;
 
     /**
@@ -411,6 +412,12 @@ export class BufferMapper {
     addBeam(b: Beam): boolean {
         if (this.beams.size == this.maxBeams || this.beams.has(b.id)) return false;
         this.beams.set(b.id, b);
+        const idA = typeof b.a == 'number' ? b.a : b.a.id;
+        const idB = typeof b.b == 'number' ? b.b : b.b.id
+        if (!this.particleBeams.has(idA)) this.particleBeams.set(idA, new Set());
+        if (!this.particleBeams.has(idB)) this.particleBeams.set(idB, new Set());
+        this.particleBeams.get(idA)!.add(b);
+        this.particleBeams.get(idB)!.add(b);
         return true;
     }
     removeParticle(p: Particle | number): boolean {
@@ -425,13 +432,18 @@ export class BufferMapper {
     findBeam(id: number): Beam | null {
         return this.beams.get(id) ?? null;
     }
+    getConnectedBeams(p: Particle | number): Set<Beam> {
+        return new Set(this.particleBeams.get(typeof p == 'number' ? p : p.id));
+    }
     get firstEmptyParticleId(): number {
+        if (this.particles.size == this.maxParticles) return -1;
         for (let i = 0; i < this.maxParticles; i++) {
             if (!this.particles.has(i)) return i;
         }
         return -1;
     }
     get firstEmptyBeamId(): number {
+        if (this.beams.size == this.maxBeams) return -1;
         for (let i = 0; i < this.maxBeams; i++) {
             if (!this.beams.has(i)) return i;
         }
@@ -446,6 +458,7 @@ export class BufferMapper {
     clear() {
         this.particles.clear();
         this.beams.clear();
+        this.particleBeams.clear();
     }
 
     /**
@@ -454,10 +467,20 @@ export class BufferMapper {
     writeState(): void {
         this.meta.particleCount = this.particles.size;
         this.meta.beamCount = this.beams.size;
+        const particleIdRemap = new Map<number, number>();
         const particles = [...this.particles.values()];
-        for (let i = 0; i < particles.length; i++) particles[i].to(this.particleData, this.mappingUint16View, i);
+        for (let i = 0; i < particles.length; i++) {
+            const p = particles[i];
+            particleIdRemap.set(p.id, i);
+            new Particle(i, p.position, p.velocity, p.acceleration).to(this.particleData, this.mappingUint16View, i);
+        }
         const beams = [...this.beams.values()];
-        for (let i = 0; i < beams.length; i++) beams[i].to(this.beamData, this.mappingUint16View, i, this.maxParticles);
+        for (let i = 0; i < beams.length; i++) {
+            const b = beams[i];
+            const idA = particleIdRemap.get(typeof b.a == 'number' ? b.a : b.a.id) ?? b.a;
+            const idB = particleIdRemap.get(typeof b.b == 'number' ? b.b : b.b.id) ?? b.b;
+            new Beam(i, idA, idB, b.length, b.spring, b.damp, b.lastDist).to(this.beamData, this.mappingUint16View, i, this.maxParticles);
+        }
     }
     /**
      * Load a new simulation state from buffers for editing.
@@ -465,8 +488,8 @@ export class BufferMapper {
     loadState(): void {
         this.clear();
         const pCount = this.meta.particleCount;
-        for (let i = 0; i < pCount; i++) this.particles.set(i, Particle.from(this.particleData, this.mappingUint16View, i));
+        for (let i = 0; i < pCount; i++) this.addParticle(Particle.from(this.particleData, this.mappingUint16View, i));
         const bCount = this.meta.beamCount;
-        for (let i = 0; i < bCount; i++) this.beams.set(i, Beam.from(this.beamData, this.mappingUint16View, i, this.maxParticles));
+        for (let i = 0; i < bCount; i++) this.addBeam(Beam.from(this.beamData, this.mappingUint16View, i, this.maxParticles));
     }
 }

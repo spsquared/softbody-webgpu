@@ -208,7 +208,7 @@ export class WGPUSoftbodyEngine {
         }
     }
 
-    destroy() {
+    destroy(): void {
         this.running = false;
         this.postMessage(WGPUSoftbodyEngineMessageTypes.DESTROY);
         for (const ev in this.listeners) {
@@ -217,5 +217,8 @@ export class WGPUSoftbodyEngine {
             else
                 document.removeEventListener(ev, this.listeners[ev]);
         }
+    }
+    get destroyed(): boolean {
+        return !this.running;
     }
 }
