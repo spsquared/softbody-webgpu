@@ -92,7 +92,7 @@ fn compute_main(thread: ComputeParams) {
         }
         let len = length(diff);
         // (ideal - current) * spring + (last - current) * damp
-        let force_mag = ((beam.target_length - len) * beam.spring + (beam.last_length - len) * beam.damp);
+        let force_mag = (beam.target_length - len) * beam.spring + (beam.last_length - len) * beam.damp;
         let force = force_mag * normalize(diff);
         beam.last_length = len;
         // TODO - add yield strength

@@ -103,7 +103,7 @@ export class WGPUSoftbodyEngine {
             e.preventDefault();
         }, { passive: false }],
         keydown: (e) => {
-            if (e.target instanceof HTMLElement && e.target.matches('input,button,textarea,select')) return;
+            if (e.target instanceof HTMLElement && e.target.matches('input[type=text],input[type=number],button,textarea,select')) return;
             this.heldKeys[e.key.toLowerCase()] = 1;
             this.updateKeyboard();
         },

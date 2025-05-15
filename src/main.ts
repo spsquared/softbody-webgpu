@@ -313,10 +313,10 @@ const editModeToggle = document.getElementById('editModeToggleButton') as HTMLIn
 editModeToggle.addEventListener('click', () => {
     if (allButtonsDisabled) return;
     if (editor.instance.editMode == 'particle') {
-        editor.instance.editMode = 'beam';
+        editor.instance.setEditMode('beam');
         editModeToggle.value = 'Edit: Beams';
     } else {
-        editor.instance.editMode = 'particle';
+        editor.instance.setEditMode('particle');
         editModeToggle.value = 'Edit: Particles';
     }
 });

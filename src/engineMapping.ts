@@ -139,16 +139,16 @@ export class Beam {
     readonly a: number | Particle;
     readonly b: number | Particle;
     length: number;
-    lastDist: number;
+    lastLen: number;
     spring: number;
     damp: number;
 
-    constructor(id: number, a: number | Particle, b: number | Particle, length: number, spring: number, damp: number, lastDist?: number) {
+    constructor(id: number, a: number | Particle, b: number | Particle, length: number, spring: number, damp: number, lastLen?: number) {
         this.id = id;
         this.a = a;
         this.b = b;
         this.length = length;
-        this.lastDist = lastDist ?? this.length;
+        this.lastLen = lastLen ?? this.length;
         this.spring = spring;
         this.damp = damp;
     }
@@ -163,7 +163,7 @@ export class Beam {
         uint16View[0] = indexA;
         uint16View[1] = indexB;
         f32View[1] = this.length;
-        f32View[2] = this.lastDist;
+        f32View[2] = this.lastLen;
         f32View[3] = this.spring;
         f32View[4] = this.damp;
     }
@@ -479,7 +479,7 @@ export class BufferMapper {
             const b = beams[i];
             const idA = particleIdRemap.get(typeof b.a == 'number' ? b.a : b.a.id) ?? b.a;
             const idB = particleIdRemap.get(typeof b.b == 'number' ? b.b : b.b.id) ?? b.b;
-            new Beam(i, idA, idB, b.length, b.spring, b.damp, b.lastDist).to(this.beamData, this.mappingUint16View, i, this.maxParticles);
+            new Beam(i, idA, idB, b.length, b.spring, b.damp, b.lastLen).to(this.beamData, this.mappingUint16View, i, this.maxParticles);
         }
     }
     /**
