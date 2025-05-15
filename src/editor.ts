@@ -237,9 +237,8 @@ export class SoftbodyEditor {
         } else if (this.action.mode == 'beam') {
             if (this.action.activeBeam != null) {
                 // finalize new beam
-                if (!this.action.forceAddMode && this.action.hoverParticle != null
-                    && (typeof this.action.activeBeam.b == 'number' ? this.action.hoverParticle.id : this.action.hoverParticle) != this.action.activeBeam.b) {
-                    // place on top of existing particle (but not with the same particle)
+                if (!this.action.forceAddMode && this.action.hoverParticle != null) {
+                    // place on top of existing particle (hover particle will never be active beam particle)
                     bufferMapper.removeParticle(this.action.activeBeam.b);
                     bufferMapper.removeBeam(this.action.activeBeam);
                     this.action.activeBeam = new Beam(this.action.activeBeam.id, this.action.activeBeam.a, this.action.hoverParticle, 0, 0, 0);
@@ -264,9 +263,12 @@ export class SoftbodyEditor {
         // closest particle (remove active beam particle)
         const particles = bufferMapper.particleSet;
         if (this.action.activeBeam != null) {
-            const rm = typeof this.action.activeBeam.b == 'number' ? bufferMapper.findParticle(this.action.activeBeam.b) : this.action.activeBeam.b;
-            if (rm != null) particles.delete(rm);
+            const rmA = typeof this.action.activeBeam.a == 'number' ? bufferMapper.findParticle(this.action.activeBeam.a) : this.action.activeBeam.a;
+            const rmB = typeof this.action.activeBeam.b == 'number' ? bufferMapper.findParticle(this.action.activeBeam.b) : this.action.activeBeam.b;
+            if (rmA != null) particles.delete(rmA);
+            if (rmB != null) particles.delete(rmB);
         }
+        if (this.action.activeParticle != null) particles.delete(this.action.activeParticle);
         this.action.hoverParticle = null;
         let closestDist = Infinity;
         for (const p of particles) {

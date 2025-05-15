@@ -248,7 +248,7 @@ function oofDefaultState(mapper: BufferMapper) {
 // edit mode
 const editor: {
     instance: SoftbodyEditor,
-    initialState: ArrayBuffer
+    initialState: ArrayBuffer,
 } = {
     instance: new SoftbodyEditor(canvas, resolution),
     // not spaghetti
@@ -263,6 +263,7 @@ const editor: {
 };
 // immediately stop editor instance (easier than null typing oof)
 editor.instance.destroy();
+editor.instance.beamSettings = { spring: 10, damp: 10 };
 async function resetToInitial() {
     disableAllButtons();
     await simulation.instance.loadSnapshot(editor.initialState);
@@ -282,13 +283,14 @@ async function switchToEditor() {
     disableSimulationButtons();
     disableAllButtons();
     await simulation.instance.destroy();
+    const beamSettings = editor.instance.beamSettings;
     editor.instance = new SoftbodyEditor(canvas, resolution);
     await editor.instance.load(editor.initialState);
     editButtonsDivs[0].style.display = 'none';
     editButtonsDivs[1].style.display = '';
     editButtonsDivs[2].style.display = '';
     editModeToggle.value = 'Edit: Beams';
-    editor.instance.beamSettings = { spring: 10, damp: 10 };
+    editor.instance.beamSettings = beamSettings;
     loadClamps();
     updateClamps();
     enableAllButtons();
@@ -306,7 +308,7 @@ async function switchToSimulation() {
     enableAllButtons();
 }
 document.getElementById('resetButton')!.addEventListener('click', () => !allButtonsDisabled && resetToInitial());
-document.getElementById('editInitialButton')!.addEventListener('click', () => !allButtonsDisabled && switchToEditor());
+document.getElementById('editInitialButton')!.addEventListener('click', () => !allButtonsDisabled && resetToInitial().then(() => switchToEditor()));
 document.getElementById('editCurrentButton')!.addEventListener('click', () => !allButtonsDisabled && setInitialState().then(() => switchToEditor()));
 document.getElementById('simulateButton')!.addEventListener('click', () => !allButtonsDisabled && switchToSimulation());
 resetToInitial();
@@ -327,8 +329,8 @@ editModeToggle.addEventListener('click', () => {
         editModeToggle.value = 'Edit: Particles';
     }
 });
-createClampedInput(document.getElementById('beamSpring') as HTMLInputElement, 0, 2000, 10, (s) => editor.instance.beamSettings.spring = s ?? editor.instance.beamSettings.spring);
-createClampedInput(document.getElementById('beamDamp') as HTMLInputElement, 0, 2000, 10, (d) => editor.instance.beamSettings.damp = d ?? editor.instance.beamSettings.damp);
+createClampedInput(document.getElementById('beamSpring') as HTMLInputElement, 0, 2000, 1, (s) => editor.instance.beamSettings.spring = s ?? editor.instance.beamSettings.spring);
+createClampedInput(document.getElementById('beamDamp') as HTMLInputElement, 0, 2000, 1, (d) => editor.instance.beamSettings.damp = d ?? editor.instance.beamSettings.damp);
 document.addEventListener('keydown', (e) => {
     if (allButtonsDisabled) return;
     if (e.key.toLowerCase() == 'enter') editModeToggle.click();
