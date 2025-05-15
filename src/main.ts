@@ -286,8 +286,11 @@ async function switchToEditor() {
     await editor.instance.load(editor.initialState);
     editButtonsDivs[0].style.display = 'none';
     editButtonsDivs[1].style.display = '';
-    editButtonsDivs[2].style.display = 'none';
+    editButtonsDivs[2].style.display = '';
     editModeToggle.value = 'Edit: Beams';
+    editor.instance.beamSettings = { spring: 10, damp: 10 };
+    loadClamps();
+    updateClamps();
     enableAllButtons();
 }
 async function switchToSimulation() {
@@ -314,12 +317,18 @@ editModeToggle.addEventListener('click', () => {
     if (allButtonsDisabled) return;
     if (editor.instance.editMode == 'particle') {
         editor.instance.setEditMode('beam');
+        editButtonsDivs[2].style.display = '';
         editModeToggle.value = 'Edit: Beams';
+        loadClamps();
+        updateClamps();
     } else {
         editor.instance.setEditMode('particle');
+        editButtonsDivs[2].style.display = 'none';
         editModeToggle.value = 'Edit: Particles';
     }
 });
+createClampedInput(document.getElementById('beamSpring') as HTMLInputElement, 0, 2000, 10, (s) => editor.instance.beamSettings.spring = s ?? editor.instance.beamSettings.spring);
+createClampedInput(document.getElementById('beamDamp') as HTMLInputElement, 0, 2000, 10, (d) => editor.instance.beamSettings.damp = d ?? editor.instance.beamSettings.damp);
 document.addEventListener('keydown', (e) => {
     if (allButtonsDisabled) return;
     if (e.key.toLowerCase() == 'enter') editModeToggle.click();

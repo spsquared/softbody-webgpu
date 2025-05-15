@@ -111,13 +111,16 @@ export class SoftbodyEditor {
         return (await this.bufferMapper).createSnapshotBuffer();
     }
 
-    // helper thing
+    // helper things
     private async getEndpoints(b: Beam): Promise<[Vector2D, Vector2D]> {
         const bufferMapper = await this.bufferMapper;
         return [
             typeof b.a == 'number' ? bufferMapper.findParticle(b.a)?.position ?? Vector2D.zero : b.a.position,
             typeof b.b == 'number' ? bufferMapper.findParticle(b.b)?.position ?? Vector2D.zero : b.b.position
         ];
+    }
+    private vecString(p: Vector2D): string {
+        return `<${Math.round(p.x)}, ${Math.round(p.y)}>`;
     }
 
     private visible: boolean = !document.hidden;
@@ -177,38 +180,43 @@ export class SoftbodyEditor {
                     }
                     this.action.hoverParticle = null;
                 }
-            } else if (this.action.forceAddMode || this.action.hoverParticle == null) {
+            } else if (this.action.hoverParticle != null) {
+                // move
+                this.action.activeParticle = this.action.hoverParticle;
+                this.action.activeParticleType = 'move';
+            } else if (this.action.hoverParticle == null || this.action.forceAddMode) {
                 // add particle (but only if mouse on grid)
                 if (this.userInput.rawMousePos.x >= 0 && this.userInput.rawMousePos.x <= 1 && this.userInput.rawMousePos.y >= 0 && this.userInput.rawMousePos.y <= 1) {
                     this.action.activeParticle = new Particle(bufferMapper.firstEmptyParticleId, this.userInput.mousePos);
                     bufferMapper.addParticle(this.action.activeParticle);
                     this.action.activeParticleType = 'add';
                 }
-            } else if (this.action.hoverParticle != null) {
-                // move
-                this.action.activeParticle = this.action.hoverParticle;
-                this.action.activeParticleType = 'move';
             }
         } else if (this.action.mode == 'beam') {
+            // hovering particle has priority over hovering beam to make adding stuff easier
             if (this.action.deleteMode) {
                 // delete
                 if (this.action.hoverBeam != null) {
                     bufferMapper.removeBeam(this.action.hoverBeam);
                     this.action.hoverBeam = null;
                 }
-            } else if (this.action.forceAddMode || this.action.hoverParticle == null) {
+            } else if (this.action.hoverParticle != null && !this.action.forceAddMode) {
+                // add new beam from existing particle (A is existing, B is new/endpoint)
+                const endpoint = new Particle(bufferMapper.firstEmptyParticleId, this.userInput.mousePos);
+                bufferMapper.addParticle(endpoint);
+                this.action.activeBeam = new Beam(bufferMapper.firstEmptyBeamId, this.action.hoverParticle, endpoint, 0, 0, 0);
+                bufferMapper.addBeam(this.action.activeBeam);
+            } else if (this.action.hoverBeam != null && !this.action.forceAddMode) {
+                // apply settings
+                this.action.hoverBeam.spring = this.action.beamSettings.spring;
+                this.action.hoverBeam.damp = this.action.beamSettings.damp;
+            } else if (this.action.hoverParticle == null || this.action.forceAddMode) {
                 // add new beam from new particle
                 const new1 = new Particle(bufferMapper.firstEmptyParticleId, this.userInput.mousePos);
                 bufferMapper.addParticle(new1);
                 const new2 = new Particle(bufferMapper.firstEmptyParticleId, this.userInput.mousePos);
                 bufferMapper.addParticle(new2);
                 this.action.activeBeam = new Beam(bufferMapper.firstEmptyBeamId, new1, new2, 0, 0, 0);
-                bufferMapper.addBeam(this.action.activeBeam);
-            } else if (this.action.hoverParticle != null) {
-                // add new beam from existing particle (A is existing, B is new/endpoint)
-                const endpoint = new Particle(bufferMapper.firstEmptyParticleId, this.userInput.mousePos);
-                bufferMapper.addParticle(endpoint);
-                this.action.activeBeam = new Beam(bufferMapper.firstEmptyBeamId, this.action.hoverParticle, endpoint, 0, 0, 0);
                 bufferMapper.addBeam(this.action.activeBeam);
             }
         }
@@ -225,8 +233,6 @@ export class SoftbodyEditor {
                     // stop moving
                     this.action.activeParticle = null;
                 }
-            } else if (this.action.deleteMode) {
-                // nothing (only delete on mouse down)
             }
         } else if (this.action.mode == 'beam') {
             if (this.action.activeBeam != null) {
@@ -247,15 +253,14 @@ export class SoftbodyEditor {
                 this.action.activeBeam.damp = this.action.beamSettings.damp;
                 // stop moving
                 this.action.activeBeam = null;
-            } else if (this.action.deleteMode) {
-                // nothing (only delete on mouse down)
             }
         }
     }
     private async updateAction(): Promise<void> {
         const bufferMapper = await this.bufferMapper;
         // small margin amount around particles & beams make clicking easier
-        const margin = Math.max(1, 3 - (3 * this.camera.s / 10));
+        const particleMargin = Math.max(1, 2 - (2 * this.camera.s / 10));
+        const beamMargin = Math.max(4, 10 - (8 * this.camera.s / 10));
         // closest particle (remove active beam particle)
         const particles = bufferMapper.particleSet;
         if (this.action.activeBeam != null) {
@@ -266,7 +271,7 @@ export class SoftbodyEditor {
         let closestDist = Infinity;
         for (const p of particles) {
             const dist = p.position.sub(this.userInput.mousePos).magnitude;
-            if (dist < closestDist && dist < this.particleRadius * margin) {
+            if (dist < closestDist && dist < this.particleRadius * particleMargin) {
                 this.action.hoverParticle = p;
                 closestDist = dist;
             }
@@ -283,7 +288,7 @@ export class SoftbodyEditor {
             const dir = q.sub(p);
             const closest = p.add(dir.mult(Math.max(0, Math.min(this.userInput.mousePos.sub(p).dot(dir) / (dir.magnitude * dir.magnitude), 1))));
             const dist = this.userInput.mousePos.sub(closest).magnitude;
-            if (dist < closestDist && dist < 2.5 * margin) {
+            if (dist < closestDist && dist < beamMargin) {
                 this.action.hoverBeam = b;
                 closestDist = dist;
             }
@@ -297,8 +302,6 @@ export class SoftbodyEditor {
                     // move it or something
                     this.action.activeParticle.position = this.action.activeParticle.position.add(this.userInput.mousePos.sub(this.userInput.lastMousePos));
                 }
-            } else if (this.action.deleteMode) {
-                // nothing (only delete on mouse down)
             }
         } else if (this.action.mode == 'beam') {
             if (this.action.activeBeam != null) {
@@ -307,8 +310,6 @@ export class SoftbodyEditor {
                     const p = bufferMapper.findParticle(this.action.activeBeam.b);
                     if (p != undefined) p.position = this.userInput.mousePos;
                 } else this.action.activeBeam.b.position = this.userInput.mousePos;
-            } else if (this.action.deleteMode) {
-                // nothing (only delete on mouse down)
             }
         }
     }
@@ -319,9 +320,11 @@ export class SoftbodyEditor {
         await this.endAction();
         this.action.mode = mode;
     }
-    setBeamSettings(spring: number, damp: number): void {
-        this.action.beamSettings.spring = spring;
-        this.action.beamSettings.damp = damp;
+    get beamSettings(): SoftbodyEditor['action']['beamSettings'] {
+        return this.action.beamSettings;
+    }
+    set beamSettings(settings: SoftbodyEditor['action']['beamSettings']) {
+        this.action.beamSettings = settings;
     }
 
     private async updateFrame(): Promise<void> {
@@ -484,6 +487,9 @@ export class SoftbodyEditor {
                 this.ctx.moveTo(a.x, a.y);
                 this.ctx.lineTo(b.x, b.y);
                 this.ctx.stroke();
+            } else if (this.action.hoverParticle && !this.action.forceAddMode && !this.action.deleteMode) {
+                // add beam from existing particle
+                drawParticleOutline(this.action.hoverParticle.position, '#FFFF00');
             } else if (this.action.hoverBeam != null && !this.action.forceAddMode) {
                 // apply settings to beam or delete
                 const [a, b] = await this.getEndpoints(this.action.hoverBeam);
@@ -494,9 +500,6 @@ export class SoftbodyEditor {
                 this.ctx.moveTo(a.x, a.y);
                 this.ctx.lineTo(b.x, b.y);
                 this.ctx.stroke();
-            } else if (this.action.hoverParticle && !this.action.forceAddMode && !this.action.deleteMode) {
-                // add beam from existing particle
-                drawParticleOutline(this.action.hoverParticle.position, '#FFFF00');
             } else if (!this.action.deleteMode) {
                 // add beam from new particle
                 drawParticleOutline(this.userInput.mousePos, '#00EE0099');
@@ -520,40 +523,41 @@ export class SoftbodyEditor {
         if (this.action.mode == 'particle') {
             if (this.action.activeParticle != null) {
                 // active particle (create/move)
-                const text = `${this.action.activeParticleType.toUpperCase()}: <${Math.round(this.action.activeParticle.position.x)}, ${Math.round(this.action.activeParticle.position.y)}>}`;
+                const text = `${this.action.activeParticleType.toUpperCase()}: ${this.vecString(this.action.activeParticle.position)}`;
                 if (this.action.activeParticleType == 'add') {
-                    const v = this.userInput.mousePos.sub(this.action.activeParticle.position);
-                    modeText.push(`${text} V=<${Math.round(v.x)}, ${Math.round(v.y)}>`);
+                    modeText.push(`${text} V=${this.vecString(this.userInput.mousePos.sub(this.action.activeParticle.position))}`);
                 } else modeText.push(text);
             } else if (this.action.hoverParticle != null && !this.action.forceAddMode) {
-                // delete particle
-                modeText.push(`${this.action.deleteMode ? 'DELETE' : 'HOVER'}: <${Math.round(this.action.hoverParticle.position.x)}, ${Math.round(this.action.hoverParticle.position.y)}>`);
+                modeText.push(`HOVER: ${this.vecString(this.action.hoverParticle.position)} V=${this.vecString(this.action.hoverParticle.velocity)}`);
+                // hover particle for delete/move
+                modeText.push(`${this.action.deleteMode ? 'DELETE' : 'MOVE'}`);
             } else if (!this.action.deleteMode) {
                 // add new particle
-                modeText.push(`ADD AT: <${Math.round(this.userInput.mousePos.x)}, ${Math.round(this.userInput.mousePos.y)}>`)
+                modeText.push(`ADD AT: ${this.vecString(this.userInput.mousePos)}`)
             }
         } else if (this.action.mode == 'beam') {
             if (this.action.activeBeam != null) {
                 // adding new beam
                 const [a, b] = await this.getEndpoints(this.action.activeBeam);
-                modeText.push(`ADD: <${Math.round(a.x)}, ${Math.round(a.y)}> → <${Math.round(b.x)}, ${Math.round(b.y)}>`);
+                modeText.push(`ADD: ${this.vecString(a)} → ${this.vecString(b)}`);
                 if (this.action.hoverParticle != null && !this.action.forceAddMode) {
                     // snap beam to existing particle
-                    modeText.push(`SNAP TO <${Math.round(this.action.hoverParticle.position.x)}, ${Math.round(this.action.hoverParticle.position.y)}>`);
+                    modeText.push(`SNAP TO ${this.vecString(this.action.hoverParticle.position)}`);
                 }
-            } else if (this.action.hoverBeam != null && !this.action.forceAddMode) {
-                // apply settings to beam or delete
-                if (this.action.deleteMode) modeText.push('DELETE BEAM');
-                else modeText.push('APPLY SETTINGS (not implemented)');
             } else if (this.action.hoverParticle != null && !this.action.forceAddMode && !this.action.deleteMode) {
                 // add new beam from existing particle
-                modeText.push(`ADD FROM: <${Math.round(this.action.hoverParticle.position.x)}, ${Math.round(this.action.hoverParticle.position.y)}>`);
+                modeText.push(`ADD FROM: ${this.vecString(this.action.hoverParticle.position)}`);
+            } else if (this.action.hoverBeam != null && !this.action.forceAddMode) {
+                const [a, b] = await this.getEndpoints(this.action.hoverBeam);
+                modeText.push(`HOVER: ${this.vecString(a)} → ${this.vecString(b)} (S=${this.action.hoverBeam.spring}, D=${this.action.hoverBeam.damp})`);
+                // apply settings to beam or delete
+                if (this.action.deleteMode) modeText.push('DELETE');
+                else modeText.push(`APPLY SETTINGS (S=${this.action.beamSettings.spring}, D=${this.action.beamSettings.damp})`);
             } else if (!this.action.deleteMode) {
                 // add beam from new particle
-                modeText.push(`ADD AT: <${Math.round(this.userInput.mousePos.x)}, ${Math.round(this.userInput.mousePos.y)}>`)
+                modeText.push(`ADD AT: ${this.vecString(this.userInput.mousePos)}`);
             }
         }
-        if (this.action.deleteMode) modeText.push('DELETE');
         if (this.action.forceAddMode) modeText.push('FORCED ADD');
         for (let i = 0; i < modeText.length; i++) {
             this.ctx.fillText(modeText[i], this.resolution - 8, 8 + 18 * i);
