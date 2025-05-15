@@ -413,7 +413,7 @@ export class BufferMapper {
         if (this.beams.size == this.maxBeams || this.beams.has(b.id)) return false;
         this.beams.set(b.id, b);
         const idA = typeof b.a == 'number' ? b.a : b.a.id;
-        const idB = typeof b.b == 'number' ? b.b : b.b.id
+        const idB = typeof b.b == 'number' ? b.b : b.b.id;
         if (!this.particleBeams.has(idA)) this.particleBeams.set(idA, new Set());
         if (!this.particleBeams.has(idB)) this.particleBeams.set(idB, new Set());
         this.particleBeams.get(idA)!.add(b);
@@ -421,10 +421,18 @@ export class BufferMapper {
         return true;
     }
     removeParticle(p: Particle | number): boolean {
-        return this.particles.delete(typeof p == 'number' ? p : p.id);
+        const res = this.particles.delete(typeof p == 'number' ? p : p.id);
+        return res;
     }
     removeBeam(b: Beam | number): boolean {
-        return this.beams.delete(typeof b == 'number' ? b : b.id);
+        const beam = typeof b == 'number' ? this.beams.get(b) : b;
+        if (beam === undefined) return false;
+        const res = this.beams.delete(beam.id);
+        if (res) {
+            this.particleBeams.get(typeof beam.a == 'number' ? beam.a : beam.a.id)?.delete(beam);
+            this.particleBeams.get(typeof beam.b == 'number' ? beam.b : beam.b.id)?.delete(beam);
+        }
+        return res;
     }
     findParticle(id: number): Particle | null {
         return this.particles.get(id) ?? null;
