@@ -22,7 +22,8 @@ struct Beam {
     target_length: f32,
     last_length: f32,
     spring: f32,
-    damp: f32
+    damp: f32,
+    stress: f32
 }
 
 struct Metadata {
@@ -67,6 +68,7 @@ var<storage, read_write> mappings: array<u32>;
 @group(0) @binding(5)
 var<storage, read_write> particle_forces: array<atomic<i32>>;
 const particle_force_scale: f32 = 65536;
+const beam_stress_scale: f32 = 1.0 / 10.0;
 
 // once again wgpu not having u16 is annoying
 @must_use
@@ -94,6 +96,7 @@ fn compute_main(thread: ComputeParams) {
         // (ideal - current) * spring + (last - current) * damp
         let force_mag = (beam.target_length - len) * beam.spring + (beam.last_length - len) * beam.damp;
         let force = force_mag * normalize(diff);
+        beam.stress = force_mag * beam_stress_scale;
         beam.last_length = len;
         // TODO - add yield strength
         // if a force is too strong the beam begins to behave plastically - its target length will change

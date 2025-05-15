@@ -59,7 +59,8 @@ var<storage, read> particles: array<Particle>;
 struct BeamVertexIn {
     @builtin(vertex_index) vertex_index: u32,
     @location(0) particle_pair: u32,
-    @location(1) target_length: f32
+    @location(1) target_length: f32,
+    @location(2) stress: f32
 }
 
 struct BeamVertexOut {
@@ -77,7 +78,7 @@ fn vertex_beam_main(vertex: BeamVertexIn) -> BeamVertexOut {
     let b = grid_size;
     // pair is two u16, but wgsl doesn't have u16 type
     out.clip_position = to_clip_space(particles[extractBits(vertex.particle_pair, vertex.vertex_index * 16, 16)].p);
-    out.stress_color = vec4<f32>(1.0, 1.0, 1.0, 1.0);
+    out.stress_color = vec4<f32>(max(0.0, min(vertex.stress + 1.0, 1.0)), max(0.0, min(1.0 - vertex.stress, 1.0)), 1.0, 1.0);
     return out;
 }
 

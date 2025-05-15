@@ -404,6 +404,11 @@ class WGPUSoftbodyEngineWorker {
                                         shaderLocation: 1,
                                         format: 'float32',
                                         offset: 4
+                                    },
+                                    {
+                                        shaderLocation: 2,
+                                        format: 'float32',
+                                        offset: 20
                                     }
                                 ],
                                 stepMode: 'instance'

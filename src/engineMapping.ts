@@ -131,8 +131,9 @@ export class Beam {
      * - Last length: `f32`
      * - Spring constant: `f32`
      * - Damping constant: `f32`
+     * - Most recent stress: `f32`
      */
-    static readonly stride = 20;
+    static readonly stride = 24;
 
     /**IDs are transient and will be reassigned on write to buffer */
     readonly id: number;
