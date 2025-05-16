@@ -253,6 +253,7 @@ function oofDefaultState(mapper: BufferMapper) {
 const editor: {
     instance: SoftbodyEditor,
     initialState: ArrayBuffer,
+    is: boolean
 } = {
     instance: new SoftbodyEditor(canvas, resolution),
     // not spaghetti
@@ -263,12 +264,14 @@ const editor: {
         oofDefaultState(mapper);
         mapper.writeState();
         return mapper.createSnapshotBuffer();
-    })()
+    })(),
+    is: false
 };
 // immediately stop editor instance (easier than null typing oof)
 editor.instance.destroy();
 editor.instance.beamSettings = { spring: 10, damp: 10 };
 async function resetToInitial() {
+    if (editor.is) return;
     disableAllButtons();
     await simulation.instance.loadSnapshot(editor.initialState);
     const constants = await simulation.instance.getPhysicsConstants();
@@ -279,11 +282,13 @@ async function resetToInitial() {
     enableAllButtons();
 }
 async function setInitialState() {
+    if (editor.is) return;
     disableAllButtons();
     editor.initialState = await simulation.instance.saveSnapshot();
     enableAllButtons();
 }
 async function switchToEditor() {
+    if (editor.is) return;
     disableSimulationButtons();
     disableAllButtons();
     await simulation.instance.destroy();
@@ -298,9 +303,11 @@ async function switchToEditor() {
     editor.instance.beamSettings = beamSettings;
     loadClamps();
     updateClamps();
+    editor.is = true;
     enableAllButtons();
 }
 async function switchToSimulation() {
+    if (!editor.is) return;
     disableAllButtons();
     editor.initialState = await editor.instance.save();
     await editor.instance.destroy();
@@ -310,6 +317,7 @@ async function switchToSimulation() {
     editButtonsDivs[1].style.display = 'none';
     editButtonsDivs[2].style.display = 'none';
     editButtonsDivs[3].style.display = 'none';
+    editor.is = false;
     enableSimulationButtons();
     enableAllButtons();
 }
@@ -322,7 +330,7 @@ editButtonsDivs[1].style.display = 'none';
 // some spaghetti
 const editModeToggle = document.getElementById('editModeToggleButton') as HTMLInputElement;
 editModeToggle.addEventListener('click', () => {
-    if (allButtonsDisabled) return;
+    if (allButtonsDisabled || !editor.is) return;
     if (editor.instance.editMode == 'particle') {
         editor.instance.setEditMode('beam');
         editButtonsDivs[2].style.display = '';
@@ -338,11 +346,11 @@ editModeToggle.addEventListener('click', () => {
 createClampedInput(document.getElementById('beamSpring') as HTMLInputElement, 0, 2000, 0.1, (s) => editor.instance.beamSettings.spring = s ?? editor.instance.beamSettings.spring);
 createClampedInput(document.getElementById('beamDamp') as HTMLInputElement, 0, 2000, 0.1, (d) => editor.instance.beamSettings.damp = d ?? editor.instance.beamSettings.damp);
 document.addEventListener('keydown', (e) => {
-    if (allButtonsDisabled) return;
+    if (allButtonsDisabled || !editor.is) return;
     if (e.key.toLowerCase() == 'enter') editModeToggle.click();
 });
 async function downloadEdit() {
-    if (allButtonsDisabled) return;
+    if (allButtonsDisabled || !editor.is) return;
     disableAllButtons();
     const blob = new Blob([await editor.instance.save()]);
     enableAllButtons();
@@ -360,7 +368,7 @@ async function uploadEdit() {
     input.addEventListener('change', async () => {
         const file = input.files?.item(0);
         if (file == null) return;
-        if (allButtonsDisabled) return;
+        if (allButtonsDisabled || !editor.is) return;
         disableAllButtons();
         const buf = await file.arrayBuffer();
         const res = await editor.instance.load(buf);

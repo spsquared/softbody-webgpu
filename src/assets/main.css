@@ -143,7 +143,6 @@ select:disabled {
     display: flex;
     flex-direction: row;
     column-gap: 4px;
-    margin-bottom: 4px;
 }
 
 #editButtonsGrid1>input,
@@ -153,6 +152,7 @@ select:disabled {
     flex-grow: 1;
 }
 
-#editButtonsBeamSettings {
-    margin-bottom: 4px;
+#editButtonsBeamSettings,
+#editFileOptionsGrid {
+    margin-top: 4px;
 }
