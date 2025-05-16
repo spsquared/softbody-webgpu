@@ -9,7 +9,10 @@ import { Beam, BufferMapper, Particle, Vector2D } from './engineMapping';
 export const main = document.getElementById('main') as HTMLDivElement;
 export const canvas = document.getElementById('canvas') as HTMLCanvasElement;
 
-if (navigator.gpu === undefined) throw new TypeError('Your device does not support WebGPU or does not have it enabled');
+if (navigator.gpu === undefined) {
+    alert('Your device does not support WebGPU or does not have it enabled');
+    throw new TypeError('Your device does not support WebGPU or does not have it enabled');
+}
 
 type Mutable<T> = {
     -readonly [P in keyof T]: T[P]
@@ -150,11 +153,12 @@ applyConstantsButton.addEventListener('click', async () => {
 
 // button things to prevent race conditions (sim buttons can be disabled separately but "all" can force them disabled too)
 const simulationButtons = [loadSnapshotButton, saveSnapshotButton, applyOptionsButton, applyConstantsButton];
-const allButtons = [...document.querySelectorAll('#editButtonsGrid1>input,#editButtonsGrid2>input'), ...simulationButtons] as HTMLInputElement[];
+const allButtons = [...document.querySelectorAll('#editButtonsGrid1>input,#editButtonsGrid2>input,#editFileOptionsGrid>input'), ...simulationButtons] as HTMLInputElement[];
 const editButtonsDivs = [
     document.getElementById('editButtonsGrid1') as HTMLDivElement,
     document.getElementById('editButtonsGrid2') as HTMLDivElement,
-    document.getElementById('editButtonsBeamSettings') as HTMLDivElement
+    document.getElementById('editButtonsBeamSettings') as HTMLDivElement,
+    document.getElementById('editFileOptionsGrid') as HTMLDivElement,
 ];
 let allButtonsDisabled = false;
 let simulationButtonsDisabled = false;
@@ -289,6 +293,7 @@ async function switchToEditor() {
     editButtonsDivs[0].style.display = 'none';
     editButtonsDivs[1].style.display = '';
     editButtonsDivs[2].style.display = '';
+    editButtonsDivs[3].style.display = '';
     editModeToggle.value = 'Edit: Beams';
     editor.instance.beamSettings = beamSettings;
     loadClamps();
@@ -304,6 +309,7 @@ async function switchToSimulation() {
     editButtonsDivs[0].style.display = '';
     editButtonsDivs[1].style.display = 'none';
     editButtonsDivs[2].style.display = 'none';
+    editButtonsDivs[3].style.display = 'none';
     enableSimulationButtons();
     enableAllButtons();
 }
@@ -329,10 +335,48 @@ editModeToggle.addEventListener('click', () => {
         editModeToggle.value = 'Edit: Particles';
     }
 });
-createClampedInput(document.getElementById('beamSpring') as HTMLInputElement, 0, 2000, 1, (s) => editor.instance.beamSettings.spring = s ?? editor.instance.beamSettings.spring);
-createClampedInput(document.getElementById('beamDamp') as HTMLInputElement, 0, 2000, 1, (d) => editor.instance.beamSettings.damp = d ?? editor.instance.beamSettings.damp);
+createClampedInput(document.getElementById('beamSpring') as HTMLInputElement, 0, 2000, 0.1, (s) => editor.instance.beamSettings.spring = s ?? editor.instance.beamSettings.spring);
+createClampedInput(document.getElementById('beamDamp') as HTMLInputElement, 0, 2000, 0.1, (d) => editor.instance.beamSettings.damp = d ?? editor.instance.beamSettings.damp);
 document.addEventListener('keydown', (e) => {
     if (allButtonsDisabled) return;
     if (e.key.toLowerCase() == 'enter') editModeToggle.click();
-})
+});
+async function downloadEdit() {
+    if (allButtonsDisabled) return;
+    disableAllButtons();
+    const blob = new Blob([await editor.instance.save()]);
+    enableAllButtons();
+    const url = URL.createObjectURL(blob);
+    const a = document.createElement('a');
+    a.href = url;
+    a.download = `save-${Math.floor(Date.now() / 1000)}.dat`;
+    a.click();
+    URL.revokeObjectURL(url);
+}
+async function uploadEdit() {
+    const input = document.createElement('input');
+    input.type = 'file';
+    input.accept = '.dat';
+    input.addEventListener('change', async () => {
+        const file = input.files?.item(0);
+        if (file == null) return;
+        if (allButtonsDisabled) return;
+        disableAllButtons();
+        const buf = await file.arrayBuffer();
+        const res = await editor.instance.load(buf);
+        if (res) {
+            loadClamps();
+            updateClamps();
+        } else {
+            // oh no buffers too large
+            console.error('Snapshot failed to load due to buffers being too large.\nThis can happen when the snapshot is created and then loaded on a different device with fewer resources.');
+            alert('Snapshot could not load; too large for this device');
+        }
+        enableAllButtons();
+    });
+    input.click();
+}
+document.getElementById('editLoadButton')!.addEventListener('click', (e) => uploadEdit());
+document.getElementById('editSaveButton')!.addEventListener('click', (e) => downloadEdit());
 editButtonsDivs[2].style.display = 'none';
+editButtonsDivs[3].style.display = 'none';

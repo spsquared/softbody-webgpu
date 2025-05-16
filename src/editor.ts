@@ -12,17 +12,19 @@ export class SoftbodyEditor {
     private readonly userInput = {
         rawMousePos: new Vector2D(0, 0),
         mousePos: new Vector2D(0, 0),
-        lastMousePos: new Vector2D(0, 0)
+        lastMousePos: new Vector2D(0, 0),
+        mouseInGrid: false
     };
-    private readonly heldKeys: Record<string, number> = {};
+    private readonly heldKeys: Set<string> = new Set();
     private updateMouse(e: MouseEvent | Touch) {
         const rect = this.canvas.getBoundingClientRect();
         this.userInput.rawMousePos = new Vector2D((e.clientX - rect.x) / rect.width, 1 - (e.clientY - rect.y) / rect.height);
         this.userInput.mousePos = this.userInput.rawMousePos.mult(this.gridSize / this.camera.s).add(this.camera.p);
+        this.userInput.mouseInGrid = this.userInput.rawMousePos.x >= 0 && this.userInput.rawMousePos.x <= 1 && this.userInput.rawMousePos.y >= 0 && this.userInput.rawMousePos.y <= 1;
     }
     private updateKeyboard() {
-        this.action.deleteMode = this.heldKeys['shift'] == 1;
-        this.action.forceAddMode = this.heldKeys['control'] == 1;
+        this.action.deleteMode = this.heldKeys.has('shift');
+        this.action.forceAddMode = this.heldKeys.has('alt');
     }
     private readonly listeners: Partial<{ [E in keyof DocumentEventMap]: ((ev: DocumentEventMap[E]) => any) | [(ev: DocumentEventMap[E]) => any, AddEventListenerOptions] }> = {
         mousedown: (e) => {
@@ -54,15 +56,19 @@ export class SoftbodyEditor {
         }, { passive: false }],
         keydown: (e) => {
             if (e.target instanceof HTMLElement && e.target.matches('input[type=text],input[type=number],button,textarea,select')) return;
-            this.heldKeys[e.key.toLowerCase()] = 1;
+            if (e.key == 'Alt') e.preventDefault();
+            this.heldKeys.add(e.key.toLowerCase());
             this.updateKeyboard();
         },
         keyup: (e) => {
-            this.heldKeys[e.key.toLowerCase()] = 0;
+            if (e.key == 'Alt') e.preventDefault();
+            this.heldKeys.delete(e.key.toLowerCase());
             this.updateKeyboard();
         },
         blur: () => {
+            console.log('buh')
             this.endAction();
+            this.heldKeys.clear();
             this.updateKeyboard();
         }
     };
@@ -186,7 +192,7 @@ export class SoftbodyEditor {
                 this.action.activeParticleType = 'move';
             } else if (this.action.hoverParticle == null || this.action.forceAddMode) {
                 // add particle (but only if mouse on grid)
-                if (this.userInput.rawMousePos.x >= 0 && this.userInput.rawMousePos.x <= 1 && this.userInput.rawMousePos.y >= 0 && this.userInput.rawMousePos.y <= 1) {
+                if (this.userInput.mouseInGrid) {
                     this.action.activeParticle = new Particle(bufferMapper.firstEmptyParticleId, this.userInput.mousePos);
                     bufferMapper.addParticle(this.action.activeParticle);
                     this.action.activeParticleType = 'add';
@@ -211,13 +217,15 @@ export class SoftbodyEditor {
                 this.action.hoverBeam.spring = this.action.beamSettings.spring;
                 this.action.hoverBeam.damp = this.action.beamSettings.damp;
             } else if (this.action.hoverParticle == null || this.action.forceAddMode) {
-                // add new beam from new particle
-                const new1 = new Particle(bufferMapper.firstEmptyParticleId, this.userInput.mousePos);
-                bufferMapper.addParticle(new1);
-                const new2 = new Particle(bufferMapper.firstEmptyParticleId, this.userInput.mousePos);
-                bufferMapper.addParticle(new2);
-                this.action.activeBeam = new Beam(bufferMapper.firstEmptyBeamId, new1, new2, 0, 0, 0);
-                bufferMapper.addBeam(this.action.activeBeam);
+                // add new beam from new particle (but only if mouse on grid)
+                if (this.userInput.mouseInGrid) {
+                    const new1 = new Particle(bufferMapper.firstEmptyParticleId, this.userInput.mousePos);
+                    bufferMapper.addParticle(new1);
+                    const new2 = new Particle(bufferMapper.firstEmptyParticleId, this.userInput.mousePos);
+                    bufferMapper.addParticle(new2);
+                    this.action.activeBeam = new Beam(bufferMapper.firstEmptyBeamId, new1, new2, 0, 0, 0);
+                    bufferMapper.addBeam(this.action.activeBeam);
+                }
             }
         }
     }
@@ -302,16 +310,17 @@ export class SoftbodyEditor {
                     // setting velocity (nothing now)
                 } else if (this.action.activeParticleType == 'move') {
                     // move it or something
-                    this.action.activeParticle.position = this.action.activeParticle.position.add(this.userInput.mousePos.sub(this.userInput.lastMousePos));
+                    this.action.activeParticle.position = this.action.activeParticle.position.add(this.userInput.mousePos.sub(this.userInput.lastMousePos)).clamp(new Vector2D(this.particleRadius, this.particleRadius), new Vector2D(this.gridSize - this.particleRadius, this.gridSize - this.particleRadius));
                 }
             }
         } else if (this.action.mode == 'beam') {
             if (this.action.activeBeam != null) {
+                const clampedPos = this.userInput.mousePos.clamp(new Vector2D(this.particleRadius, this.particleRadius), new Vector2D(this.gridSize - this.particleRadius, this.gridSize - this.particleRadius));
                 // move endpoint (very useless code because beam particle should always be a particle and not an id)
                 if (typeof this.action.activeBeam.b == 'number') {
                     const p = bufferMapper.findParticle(this.action.activeBeam.b);
-                    if (p != undefined) p.position = this.userInput.mousePos;
-                } else this.action.activeBeam.b.position = this.userInput.mousePos;
+                    if (p != undefined) p.position = clampedPos;
+                } else this.action.activeBeam.b.position = clampedPos;
             }
         }
     }
@@ -337,11 +346,11 @@ export class SoftbodyEditor {
         const deltaTime = now - this.lastFrame;
         let ocs = this.camera.s;
         let zoomed = false;
-        if (this.heldKeys['[']) {
+        if (this.heldKeys.has('[')) {
             this.camera.s /= deltaTime * 0.002 + 1;
             zoomed = true;
         }
-        if (this.heldKeys[']']) {
+        if (this.heldKeys.has(']')) {
             this.camera.s *= deltaTime * 0.002 + 1;
             zoomed = true;
         }
@@ -351,8 +360,8 @@ export class SoftbodyEditor {
         }
         const speed = deltaTime * (this.heldKeys['shift'] ? 3 : 1) * 0.4;
         this.camera.p = this.camera.p.add(new Vector2D(
-            ((this.heldKeys['l'] ?? 0) - (this.heldKeys['j'] ?? 0)) * speed,
-            ((this.heldKeys['i'] ?? 0) - (this.heldKeys['k'] ?? 0)) * speed
+            ((this.heldKeys.has('l') ? 1 : 0) - (this.heldKeys.has('j') ? 1 : 0)) * speed,
+            ((this.heldKeys.has('i') ? 1 : 0) - (this.heldKeys.has('k') ? 1 : 0)) * speed
         ));
         this.camera.p = this.camera.p.clamp(new Vector2D(0, 0), new Vector2D(this.gridSize - this.gridSize / this.camera.s, this.gridSize - this.gridSize / this.camera.s));
         this.lastFrame = now;
@@ -463,7 +472,7 @@ export class SoftbodyEditor {
                 drawParticleOutline(this.action.hoverParticle.position, this.action.deleteMode ? '#FF0000' : '#FFFF00');
             } else if (!this.action.deleteMode) {
                 // create new particle
-                drawParticleOutline(this.userInput.mousePos, '#00EE0099');
+                if (this.userInput.mouseInGrid) drawParticleOutline(this.userInput.mousePos, '#00EE0099');
             }
         } else if (this.action.mode == 'beam') {
             if (this.action.activeBeam != null) {
@@ -504,7 +513,7 @@ export class SoftbodyEditor {
                 this.ctx.stroke();
             } else if (!this.action.deleteMode) {
                 // add beam from new particle
-                drawParticleOutline(this.userInput.mousePos, '#00EE0099');
+                if (this.userInput.mouseInGrid) drawParticleOutline(this.userInput.mousePos, '#00EE0099');
             }
         }
         // return to canvas space
@@ -535,7 +544,7 @@ export class SoftbodyEditor {
                 modeText.push(`${this.action.deleteMode ? 'DELETE' : 'MOVE'}`);
             } else if (!this.action.deleteMode) {
                 // add new particle
-                modeText.push(`ADD AT: ${this.vecString(this.userInput.mousePos)}`)
+                if (this.userInput.mouseInGrid) modeText.push(`ADD AT: ${this.vecString(this.userInput.mousePos)}`);
             }
         } else if (this.action.mode == 'beam') {
             if (this.action.activeBeam != null) {
@@ -557,7 +566,7 @@ export class SoftbodyEditor {
                 else modeText.push(`APPLY SETTINGS (S=${this.action.beamSettings.spring}, D=${this.action.beamSettings.damp})`);
             } else if (!this.action.deleteMode) {
                 // add beam from new particle
-                modeText.push(`ADD AT: ${this.vecString(this.userInput.mousePos)}`);
+                if (this.userInput.mouseInGrid) modeText.push(`ADD AT: ${this.vecString(this.userInput.mousePos)}`);
             }
         }
         if (this.action.forceAddMode) modeText.push('FORCED ADD');

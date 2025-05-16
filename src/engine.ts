@@ -43,7 +43,7 @@ export class WGPUSoftbodyEngine {
         mouseActive: false,
         touchActive: false
     };
-    private readonly heldKeys: Record<string, number> = {};
+    private readonly heldKeys: Set<string> = new Set();
     private sendUserInput = ((fn) => {
         let timeout: NodeJS.Timeout = setTimeout(() => { });
         let lastUpdate = 0;
@@ -69,8 +69,8 @@ export class WGPUSoftbodyEngine {
     }
     private updateKeyboard() {
         this.userInput.appliedForce = new Vector2D(
-            (this.heldKeys['d'] ?? 0) - (this.heldKeys['a'] ?? 0),
-            (this.heldKeys['w'] ?? 0) - (this.heldKeys['s'] ?? 0)
+            (this.heldKeys.has('d') ? 1 : 0) - (this.heldKeys.has('a') ? 1 : 0),
+            (this.heldKeys.has('w') ? 1 : 0) - (this.heldKeys.has('s') ? 1 : 0)
         );
         this.sendUserInput();
     }
@@ -104,14 +104,17 @@ export class WGPUSoftbodyEngine {
         }, { passive: false }],
         keydown: (e) => {
             if (e.target instanceof HTMLElement && e.target.matches('input[type=text],input[type=number],button,textarea,select')) return;
-            this.heldKeys[e.key.toLowerCase()] = 1;
+            if (e.key == 'Alt') e.preventDefault();
+            this.heldKeys.add(e.key.toLowerCase());
             this.updateKeyboard();
         },
         keyup: (e) => {
-            this.heldKeys[e.key.toLowerCase()] = 0;
+            if (e.key == 'Alt') e.preventDefault();
+            this.heldKeys.delete(e.key.toLowerCase());
             this.updateKeyboard();
         },
         blur: () => {
+            this.heldKeys.clear();
             this.userInput.mouseActive = false;
             this.updateKeyboard();
         }
@@ -136,9 +139,9 @@ export class WGPUSoftbodyEngine {
         this.startDraw();
         for (const ev in this.listeners) {
             if (Array.isArray(this.listeners[ev]))
-                document.addEventListener(ev, this.listeners[ev][0], this.listeners[ev][1]);
+                window.addEventListener(ev, this.listeners[ev][0], this.listeners[ev][1]);
             else
-                document.addEventListener(ev, this.listeners[ev]);
+                window.addEventListener(ev, this.listeners[ev]);
         }
     }
 
@@ -213,9 +216,9 @@ export class WGPUSoftbodyEngine {
         this.postMessage(WGPUSoftbodyEngineMessageTypes.DESTROY);
         for (const ev in this.listeners) {
             if (Array.isArray(this.listeners[ev]))
-                document.removeEventListener(ev, this.listeners[ev][0], this.listeners[ev][1]);
+                window.removeEventListener(ev, this.listeners[ev][0], this.listeners[ev][1]);
             else
-                document.removeEventListener(ev, this.listeners[ev]);
+                window.removeEventListener(ev, this.listeners[ev]);
         }
     }
     get destroyed(): boolean {

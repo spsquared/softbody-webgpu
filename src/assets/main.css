@@ -138,7 +138,8 @@ select:disabled {
 }
 
 #editButtonsGrid1,
-#editButtonsGrid2 {
+#editButtonsGrid2,
+#editFileOptionsGrid {
     display: flex;
     flex-direction: row;
     column-gap: 4px;
@@ -146,7 +147,12 @@ select:disabled {
 }
 
 #editButtonsGrid1>input,
-#editButtonsGrid2>input {
+#editButtonsGrid2>input,
+#editFileOptionsGrid>input {
     flex-basis: 0px;
     flex-grow: 1;
+}
+
+#editButtonsBeamSettings {
+    margin-bottom: 4px;
 }
