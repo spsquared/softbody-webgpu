@@ -68,7 +68,7 @@ var<storage, read_write> mappings: array<u32>;
 @group(0) @binding(5)
 var<storage, read_write> particle_forces: array<atomic<i32>>;
 const particle_force_scale: f32 = 65536;
-const beam_stress_scale: f32 = 1.0 / 10.0;
+const beam_stress_scale: f32 = 1.0 / 20.0;
 
 // once again wgpu not having u16 is annoying
 @must_use

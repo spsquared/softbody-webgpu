@@ -407,7 +407,7 @@ export class SoftbodyEditor {
         this.ctx.lineWidth = 1;
         this.ctx.lineCap = 'round';
         const stressQuantization = 16;
-        const stressScale = 1 / 10; // arbitrary, beams will saturate stress colors
+        const stressScale = 1 / 20; // arbitrary, beams will saturate stress colors
         const stressLevelBeams: Set<[Vector2D, Vector2D]>[] = Array.from({ length: 2 * stressQuantization + 1 }, () => new Set());
         const invalidBeams = new Set<Beam>();
         for (const b of beams) {
@@ -417,8 +417,8 @@ export class SoftbodyEditor {
             else {
                 const len = p1.position.sub(p2.position).magnitude;
                 const force = (b.length - len) * b.spring + (b.lastLen - len) * b.damp;
-                // positive = compression, negative = tension
-                stressLevelBeams[Math.max(0, Math.min(stressLevelBeams.length - 1, Math.round(force * stressScale + stressQuantization)))].add([p1.position, p2.position]);
+                // positive = compression, negative = tension (multiplication by quantization * 2 because stress color in compute is funny)
+                stressLevelBeams[Math.max(0, Math.min(stressLevelBeams.length - 1, Math.round(force * stressScale * stressQuantization * 2 + stressQuantization)))].add([p1.position, p2.position]);
             }
         }
         for (let i = 0; i < stressLevelBeams.length; i++) {
