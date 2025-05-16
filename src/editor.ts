@@ -66,10 +66,12 @@ export class SoftbodyEditor {
             this.updateKeyboard();
         },
         blur: () => {
-            console.log('buh')
             this.endAction();
             this.heldKeys.clear();
             this.updateKeyboard();
+        },
+        visibilitychange: () => {
+            this.visible = !document.hidden
         }
     };
 
@@ -100,13 +102,13 @@ export class SoftbodyEditor {
             if (ad === null) throw new TypeError('GPU adapter not available');
             resolve(new BufferMapper(ad.limits.maxStorageBufferBindingSize));
         });
-        document.addEventListener('visibilitychange', () => this.visible = !document.hidden);
         this.startDraw();
         for (const ev in this.listeners) {
-            if (Array.isArray(this.listeners[ev]))
-                document.addEventListener(ev, this.listeners[ev][0], this.listeners[ev][1]);
-            else
-                document.addEventListener(ev, this.listeners[ev]);
+            if (Array.isArray(this.listeners[ev])) {
+                (ev == 'blur' ? window : document).addEventListener(ev, this.listeners[ev][0], this.listeners[ev][1]);
+            } else {
+                (ev == 'blur' ? window : document).addEventListener(ev, this.listeners[ev]);
+            }
         }
     }
 
@@ -595,10 +597,11 @@ export class SoftbodyEditor {
     destroy(): void {
         this.running = false;
         for (const ev in this.listeners) {
-            if (Array.isArray(this.listeners[ev]))
-                document.removeEventListener(ev, this.listeners[ev][0], this.listeners[ev][1]);
-            else
-                document.removeEventListener(ev, this.listeners[ev]);
+            if (Array.isArray(this.listeners[ev])) {
+                (ev == 'blur' ? window : document).removeEventListener(ev, this.listeners[ev][0], this.listeners[ev][1]);
+            } else {
+                (ev == 'blur' ? window : document).removeEventListener(ev, this.listeners[ev]);
+            }
         }
     }
     get destroyed(): boolean {

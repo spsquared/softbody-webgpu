@@ -117,6 +117,9 @@ export class WGPUSoftbodyEngine {
             this.heldKeys.clear();
             this.userInput.mouseActive = false;
             this.updateKeyboard();
+        },
+        visibilitychange: () => {
+            this.postMessage(WGPUSoftbodyEngineMessageTypes.VISIBILITY_CHANGE, document.hidden);
         }
     };
 
@@ -134,14 +137,14 @@ export class WGPUSoftbodyEngine {
         this.worker.addEventListener('error', (err) => { throw err.error ?? new Error(err.message ?? 'Error in engine worker'); });
         this.worker.addEventListener('message', (e) => this.onMessage(e));
         this.postMessage(WGPUSoftbodyEngineMessageTypes.INIT, { canvas: offscreen, options: opts }, [offscreen]);
-        document.addEventListener('visibilitychange', () => this.postMessage(WGPUSoftbodyEngineMessageTypes.VISIBILITY_CHANGE, document.hidden));
         this.postMessage(WGPUSoftbodyEngineMessageTypes.VISIBILITY_CHANGE, document.hidden);
         this.startDraw();
         for (const ev in this.listeners) {
-            if (Array.isArray(this.listeners[ev]))
-                window.addEventListener(ev, this.listeners[ev][0], this.listeners[ev][1]);
-            else
-                window.addEventListener(ev, this.listeners[ev]);
+            if (Array.isArray(this.listeners[ev])) {
+                (ev == 'blur' ? window : document).addEventListener(ev, this.listeners[ev][0], this.listeners[ev][1]);
+            } else {
+                (ev == 'blur' ? window : document).addEventListener(ev, this.listeners[ev]);
+            }
         }
     }
 
@@ -215,10 +218,11 @@ export class WGPUSoftbodyEngine {
         this.running = false;
         this.postMessage(WGPUSoftbodyEngineMessageTypes.DESTROY);
         for (const ev in this.listeners) {
-            if (Array.isArray(this.listeners[ev]))
-                window.removeEventListener(ev, this.listeners[ev][0], this.listeners[ev][1]);
-            else
-                window.removeEventListener(ev, this.listeners[ev]);
+            if (Array.isArray(this.listeners[ev])) {
+                (ev == 'blur' ? window : document).removeEventListener(ev, this.listeners[ev][0], this.listeners[ev][1]);
+            } else {
+                (ev == 'blur' ? window : document).removeEventListener(ev, this.listeners[ev]);
+            }
         }
     }
     get destroyed(): boolean {
