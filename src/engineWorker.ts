@@ -598,7 +598,8 @@ class WGPUSoftbodyEngineWorker {
             label: 'Engine compute pass'
         });
         computePass.setPipeline(pipelines.compute);
-        const numWorkgroups = Math.ceil(Math.max(bufferMapper.maxParticles, bufferMapper.maxBeams) / this.workgroupSize);
+        // using this will break if new particles/beams are added by the compute shader
+        const numWorkgroups = Math.ceil(Math.max(bufferMapper.meta.particleCount, bufferMapper.meta.beamCount) / this.workgroupSize);
         for (let i = 0; i < this.subticks; i++) {
             // alternating bind groups - read from one buffer and write to the other (fixes collision asymmetry)
             if (i % 2 == 0) computePass.setBindGroup(0, bindGroups.computeA.group);

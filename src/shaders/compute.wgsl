@@ -8,7 +8,8 @@ fn cross2(u: vec2<f32>, v: vec2<f32>) -> f32 {
 }
 
 struct ComputeParams {
-    @builtin(global_invocation_id) global_invocation_id: vec3<u32>
+    @builtin(global_invocation_id) global_invocation_id: vec3<u32>,
+    @builtin(num_workgroups) num_workgroups: vec3<u32>
 }
 
 struct Particle {
@@ -79,8 +80,8 @@ fn getMappedIndex(id: u32) -> u32 {
 @compute @workgroup_size(64, 1, 1)
 fn compute_main(thread: ComputeParams) {
     // beam sim (inversion may help speed up simulation by spreading beams/particles across more threads)
-    let beam_mapping_index = metadata.max_beams - thread.global_invocation_id.x - 1;
-    if (beam_mapping_index < metadata.beam_i_c) {
+    let beam_mapping_index = thread.num_workgroups.x * 64 - thread.global_invocation_id.x - 1;
+    if (beam_mapping_index >= 0) {
         let index = getMappedIndex(metadata.max_particles + beam_mapping_index);
         var beam = beams[index];
         let index_a = extractBits(beam.particle_pair, 0, 16);
