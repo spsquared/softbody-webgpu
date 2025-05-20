@@ -32,7 +32,7 @@ class WGPUSoftbodyEngineWorker {
     private readonly device: Promise<GPUDevice>;
     private readonly textureFormat: GPUTextureFormat;
 
-    readonly gridSize: number = 1000;
+    readonly boundsSize: number = 1000;
     readonly particleRadius: number = 10;
     readonly subticks: number = 64;
 
@@ -80,7 +80,7 @@ class WGPUSoftbodyEngineWorker {
         this.ctx = this.canvas.getContext('webgpu') as GPUCanvasContext;
         if (this.ctx === null) throw new TypeError('WebGPU not supported');
         // apply options
-        if (opts != undefined) {
+        if (opts !== undefined) {
             if (opts.particleRadius !== undefined) this.particleRadius = opts.particleRadius;
             if (opts.subticks !== undefined) this.subticks = Math.ceil(opts.subticks / 2) * 2;
         }
@@ -325,7 +325,7 @@ class WGPUSoftbodyEngineWorker {
                         module: modules.compute,
                         entryPoint: 'compute_main',
                         constants: {
-                            grid_size: this.gridSize,
+                            bounds_size: this.boundsSize,
                             particle_radius: this.particleRadius,
                             time_step: 1 / this.subticks,
                         }
@@ -341,7 +341,7 @@ class WGPUSoftbodyEngineWorker {
                         module: modules.render,
                         entryPoint: 'vertex_particle_main',
                         constants: {
-                            grid_size: this.gridSize,
+                            bounds_size: this.boundsSize,
                             particle_radius: this.particleRadius
                         },
                         buffers: [
@@ -389,7 +389,7 @@ class WGPUSoftbodyEngineWorker {
                         module: modules.render,
                         entryPoint: 'vertex_beam_main',
                         constants: {
-                            grid_size: this.gridSize,
+                            bounds_size: this.boundsSize,
                         },
                         buffers: [
                             {
@@ -584,8 +584,8 @@ class WGPUSoftbodyEngineWorker {
         const frameStart = performance.now();
         bufferMapper.meta.setUserInput(
             this.userInput.appliedForce,
-            this.userInput.mousePos.mult(this.gridSize),
-            this.userInput.mousePos.sub(this.userInput.lastMouse).mult(this.currentFps * (frameStart - this.userInput.lastFrame) / 1000 * this.gridSize),
+            this.userInput.mousePos.mult(this.boundsSize),
+            this.userInput.mousePos.sub(this.userInput.lastMouse).mult(this.currentFps * (frameStart - this.userInput.lastFrame) / 1000 * this.boundsSize),
             this.userInput.mouseActive
         );
         bufferMapper.meta.writeUserInput(device.queue, buffers.metadata);

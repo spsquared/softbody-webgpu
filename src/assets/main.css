@@ -153,6 +153,7 @@ select:disabled {
 }
 
 #editButtonsBeamSettings,
+#editButtonsOptions,
 #editFileOptionsGrid {
     margin-top: 4px;
 }

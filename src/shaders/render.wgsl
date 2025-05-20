@@ -1,11 +1,11 @@
-override grid_size: f32;
+override bounds_size: f32;
 override particle_radius: f32;
 
 const billboard_points: array<vec2<f32>, 3> = array<vec2<f32>, 3>(vec2<f32>(0.0, 2.0), vec2<f32>(- sqrt(3.0), - 1.0), vec2<f32>(sqrt(3.0), - 1.0),);
 
 const clip_offset: vec2<f32> = vec2<f32>(- 1.0, - 1.0);
 fn to_clip_space(pos: vec2<f32>) -> vec4<f32> {
-    return vec4<f32>(2 * pos / grid_size + clip_offset, 0.0, 1.0);
+    return vec4<f32>(2 * pos / bounds_size + clip_offset, 0.0, 1.0);
 }
 
 struct Particle {
@@ -75,7 +75,7 @@ struct BeamFragIn {
 @vertex
 fn vertex_beam_main(vertex: BeamVertexIn) -> BeamVertexOut {
     var out: BeamVertexOut;
-    let b = grid_size;
+    let b = bounds_size;
     // pair is two u16, but wgsl doesn't have u16 type
     out.clip_position = to_clip_space(particles[extractBits(vertex.particle_pair, vertex.vertex_index * 16, 16)].p);
     out.stress_color = vec4<f32>(max(0.0, min(vertex.stress + 1.0, 1.0)), max(0.0, min(1.0 - vertex.stress, 1.0)), 1.0, 1.0);

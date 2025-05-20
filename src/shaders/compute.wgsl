@@ -1,4 +1,4 @@
-override grid_size: f32;
+override bounds_size: f32;
 override particle_radius: f32;
 override time_step: f32;
 
@@ -163,7 +163,7 @@ fn compute_main(thread: ComputeParams) {
         particle.p += particle.v * time_step;
         particle.a = vec2<f32>(0.0, 0.0);
         // border collisions (very simple)
-        let clamped_pos = clamp(particle.p, vec2<f32>(particle_radius, particle_radius), vec2<f32>(f32(grid_size) - particle_radius, f32(grid_size) - particle_radius));
+        let clamped_pos = clamp(particle.p, vec2<f32>(particle_radius, particle_radius), vec2<f32>(f32(bounds_size) - particle_radius, f32(bounds_size) - particle_radius));
         if (particle.p.x != clamped_pos.x) {
             particle.a.y -= min(particle.a.y, sign(particle.v.y) * metadata.border_friction * abs(particle.v.x) * (1 + metadata.border_elasticity));
             particle.v.x *= - metadata.border_elasticity;

@@ -158,6 +158,7 @@ const editButtonsDivs = [
     document.getElementById('editButtonsGrid1') as HTMLDivElement,
     document.getElementById('editButtonsGrid2') as HTMLDivElement,
     document.getElementById('editButtonsBeamSettings') as HTMLDivElement,
+    document.getElementById('editButtonsOptions') as HTMLDivElement,
     document.getElementById('editFileOptionsGrid') as HTMLDivElement,
 ];
 let allButtonsDisabled = false;
@@ -270,6 +271,7 @@ const editor: {
 // immediately stop editor instance (easier than null typing oof)
 editor.instance.destroy();
 editor.instance.beamSettings = { spring: 10, damp: 10 };
+editor.instance.snapGridSize = 10;
 async function resetToInitial() {
     if (editor.is) return;
     disableAllButtons();
@@ -293,14 +295,19 @@ async function switchToEditor() {
     disableAllButtons();
     await simulation.instance.destroy();
     const beamSettings = editor.instance.beamSettings;
+    const grid = editor.instance.snapGridSize;
+    const triangulation = editor.instance.autoTriangulateDistance;
     editor.instance = new SoftbodyEditor(canvas, resolution);
     await editor.instance.load(editor.initialState);
     editButtonsDivs[0].style.display = 'none';
     editButtonsDivs[1].style.display = '';
     editButtonsDivs[2].style.display = '';
     editButtonsDivs[3].style.display = '';
+    editButtonsDivs[4].style.display = '';
     editModeToggle.value = 'Edit: Beams';
     editor.instance.beamSettings = beamSettings;
+    editor.instance.snapGridSize = grid;
+    editor.instance.autoTriangulateDistance = triangulation;
     loadClamps();
     updateClamps();
     editor.is = true;
@@ -317,6 +324,7 @@ async function switchToSimulation() {
     editButtonsDivs[1].style.display = 'none';
     editButtonsDivs[2].style.display = 'none';
     editButtonsDivs[3].style.display = 'none';
+    editButtonsDivs[4].style.display = 'none';
     editor.is = false;
     enableSimulationButtons();
     enableAllButtons();
@@ -343,12 +351,14 @@ editModeToggle.addEventListener('click', () => {
         editModeToggle.value = 'Edit: Particles';
     }
 });
-createClampedInput(document.getElementById('beamSpring') as HTMLInputElement, 0, 2000, 0.1, (s) => editor.instance.beamSettings.spring = s ?? editor.instance.beamSettings.spring);
-createClampedInput(document.getElementById('beamDamp') as HTMLInputElement, 0, 2000, 0.1, (d) => editor.instance.beamSettings.damp = d ?? editor.instance.beamSettings.damp);
 document.addEventListener('keydown', (e) => {
     if (allButtonsDisabled || !editor.is) return;
     if (e.key.toLowerCase() == 'enter') editModeToggle.click();
 });
+createClampedInput(document.getElementById('beamSpring') as HTMLInputElement, 0, 2000, 0.1, (s) => editor.instance.beamSettings.spring = s ?? editor.instance.beamSettings.spring);
+createClampedInput(document.getElementById('beamDamp') as HTMLInputElement, 0, 2000, 0.1, (d) => editor.instance.beamSettings.damp = d ?? editor.instance.beamSettings.damp);
+createClampedInput(document.getElementById('triangulationDistance') as HTMLInputElement, 0, 1000, 10, (d) => editor.instance.autoTriangulateDistance = d ?? editor.instance.autoTriangulateDistance);
+createClampedInput(document.getElementById('snapGridSize') as HTMLInputElement, 0, 100, 10, (d) => editor.instance.snapGridSize = d ?? editor.instance.snapGridSize);
 async function downloadEdit() {
     if (allButtonsDisabled || !editor.is) return;
     disableAllButtons();
@@ -388,3 +398,4 @@ document.getElementById('editLoadButton')!.addEventListener('click', (e) => uplo
 document.getElementById('editSaveButton')!.addEventListener('click', (e) => downloadEdit());
 editButtonsDivs[2].style.display = 'none';
 editButtonsDivs[3].style.display = 'none';
+editButtonsDivs[4].style.display = 'none';
