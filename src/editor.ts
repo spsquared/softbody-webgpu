@@ -56,11 +56,11 @@ export class SoftbodyEditor {
             e.preventDefault();
         }, { passive: false }],
         keydown: (e) => {
-            if (e.target instanceof HTMLElement && e.target.matches('input[type=text],input[type=number],button,textarea,select')) return;
-            if (e.key == 'Alt') e.preventDefault();
             this.heldKeys.add(e.key.toLowerCase());
             this.updateKeyboard();
             this.keyAction(e.key.toLowerCase());
+            if (e.target instanceof HTMLElement && e.target.matches('input[type=text],input[type=number],textarea')) return;
+            if (e.key == 'Alt') e.preventDefault();
         },
         keyup: (e) => {
             if (e.key == 'Alt') e.preventDefault();

@@ -76,6 +76,7 @@ export class WGPUSoftbodyEngine {
     }
     private readonly listeners: Partial<{ [E in keyof DocumentEventMap]: ((ev: DocumentEventMap[E]) => any) | [(ev: DocumentEventMap[E]) => any, AddEventListenerOptions] }> = {
         mousedown: (e) => {
+            if (e.target instanceof HTMLElement && e.target.matches('input,button,textarea,select')) return;
             if (e.button == 0) this.userInput.mouseActive = true;
             this.updateMouse(e);
         },
@@ -87,6 +88,7 @@ export class WGPUSoftbodyEngine {
             this.updateMouse(e);
         },
         touchstart: (e) => {
+            if (e.target instanceof HTMLElement && e.target.matches('input,button,textarea,select')) return;
             this.userInput.touchActive = true;
             this.updateMouse(e.touches[0]);
         },
@@ -103,10 +105,10 @@ export class WGPUSoftbodyEngine {
             e.preventDefault();
         }, { passive: false }],
         keydown: (e) => {
-            if (e.target instanceof HTMLElement && e.target.matches('input[type=text],input[type=number],button,textarea,select')) return;
-            if (e.key == 'Alt') e.preventDefault();
             this.heldKeys.add(e.key.toLowerCase());
             this.updateKeyboard();
+            if (e.target instanceof HTMLElement && e.target.matches('input[type=text],input[type=number],button,textarea,select')) return;
+            if (e.key == 'Alt') e.preventDefault();
         },
         keyup: (e) => {
             if (e.key == 'Alt') e.preventDefault();
