@@ -21,37 +21,50 @@ export class Vector2D {
     translate(x: number, y: number): Vector2D {
         return new Vector2D(this.x + x, this.y + y);
     }
-
     mult(s: number): Vector2D {
         return new Vector2D(this.x * s, this.y * s);
     }
-
     norm(): Vector2D {
         return this.mult(1 / this.magnitude);
     }
-
     negate(): Vector2D {
         return new Vector2D(-this.x, -this.y);
     }
-
     add(o: Vector2D): Vector2D {
         return new Vector2D(this.x + o.x, this.y + o.y);
     }
-
     sub(o: Vector2D): Vector2D {
         return this.add(o.negate());
     }
-
     dot(o: Vector2D): number {
         return this.x * o.x + this.y * o.y;
     }
-
     cross(o: Vector2D): number {
         return this.x * o.y - this.y * o.x;
     }
 
-    clamp(min: Vector2D, max: Vector2D): Vector2D {
-        return new Vector2D(Math.max(min.x, Math.min(this.x, max.x)), Math.max(min.y, Math.min(this.y, max.y)));
+    static min(u: Vector2D, v: Vector2D): Vector2D {
+        return new Vector2D(Math.min(u.x, v.x), Math.min(u.y, v.y));
+    }
+    static max(u: Vector2D, v: Vector2D): Vector2D {
+        return new Vector2D(Math.max(u.x, v.x), Math.max(u.y, v.y));
+    }
+    static clamp(vec: Vector2D, min: Vector2D, max: Vector2D): Vector2D {
+        return new Vector2D(Math.max(min.x, Math.min(vec.x, max.x)), Math.max(min.y, Math.min(vec.y, max.y)));
+    }
+
+    /**
+     * Determines the turn direction from line segment PQ to point R. `0` Indicates
+     * P, Q, and R are colinear, `1` indicates a right turn, and `-1` indicates a left turn.
+     * ```
+     * |  1   1   1  |
+     * | P.x R.x Q.x |
+     * | P.y R.y Q.y |
+     * ```
+     * Where `R` is this vector
+     */
+    static turnDirection(p: Vector2D, q: Vector2D, r: Vector2D): number {
+        return Math.sign(p.x * (r.y - q.y) + r.x * (q.y - p.y) + q.x * (p.y - r.y));
     }
 
     toString(): string {
