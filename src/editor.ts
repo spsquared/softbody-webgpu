@@ -435,6 +435,9 @@ export class SoftbodyEditor {
                 }
                 this.action.selectedBeams.clear();
             }
+        } else if (key == 'escape') {
+            this.action.selectedParticles.clear();
+            this.action.selectedBeams.clear();
         } else if (key == 'r' && this.action.mode == 'beam') {
             // reset beam stresses
             for (const b of this.action.selectedBeams) {
@@ -667,7 +670,7 @@ export class SoftbodyEditor {
         }
         if (this.action.selectBox.active) {
             // this is drawn last to be on top of everything
-            this.ctx.strokeStyle = '#FFFFFF55';
+            this.ctx.strokeStyle = '#FFFFFFAA';
             this.ctx.lineCap = 'butt';
             this.ctx.lineWidth = 1;
             this.ctx.setLineDash([10, 5]);
@@ -675,7 +678,7 @@ export class SoftbodyEditor {
             const size = Vector2D.max(this.action.selectBox.a, this.action.selectBox.b).sub(pos);
             this.ctx.strokeRect(pos.x, pos.y, size.x, size.y);
             this.ctx.setLineDash([]);
-            this.ctx.fillStyle = '#FFFFFF11';
+            this.ctx.fillStyle = '#FFFFFF22';
             this.ctx.fillRect(pos.x, pos.y, size.x, size.y);
         }
         // return to canvas space
