@@ -121,6 +121,8 @@ function createClampedInput(input: HTMLInputElement, min: number | (() => number
 // options
 createClampedInput(document.getElementById('particleRadius') as HTMLInputElement, 1, 500, 1, simulation.options);
 createClampedInput(document.getElementById('subticks') as HTMLInputElement, 2, 192, 2, simulation.options);
+// keyboard force
+createClampedInput(document.getElementById('keyboardForce') as HTMLInputElement, 0.1, 10, 0.1, (v) => simulation.instance.keyboardForce = v ?? simulation.instance.keyboardForce);
 // constants
 createClampedInput(document.getElementById('gravityX') as HTMLInputElement, -10, 10, 0.02, (v) => ((v !== undefined && (simulation.constants.gravity = new Vector2D(v, simulation.constants.gravity.y))), simulation.constants.gravity.x));
 createClampedInput(document.getElementById('gravityY') as HTMLInputElement, -10, 10, 0.02, (v) => ((v !== undefined && (simulation.constants.gravity = new Vector2D(simulation.constants.gravity.x, v))), simulation.constants.gravity.y));

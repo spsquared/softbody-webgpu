@@ -69,8 +69,8 @@ export class WGPUSoftbodyEngine {
     }
     private updateKeyboard() {
         this.userInput.appliedForce = new Vector2D(
-            (this.heldKeys.has('d') ? 1 : 0) - (this.heldKeys.has('a') ? 1 : 0),
-            (this.heldKeys.has('w') ? 1 : 0) - (this.heldKeys.has('s') ? 1 : 0)
+            (this.heldKeys.has('d') ? this.keyboardForce : 0) - (this.heldKeys.has('a') ? this.keyboardForce : 0),
+            (this.heldKeys.has('w') ? this.keyboardForce : 0) - (this.heldKeys.has('s') ? this.keyboardForce : 0)
         );
         this.sendUserInput();
     }
@@ -182,6 +182,8 @@ export class WGPUSoftbodyEngine {
                 break;
         }
     }
+
+    keyboardForce: number = 1;
     async setPhysicsConstants(constants: WGPUSoftbodyEnginePhysicsConstants): Promise<void> {
         await this.postMessageWithAck(WGPUSoftbodyEngineMessageTypes.PHYSICS_CONSTANTS, undefined, constants);
     }
