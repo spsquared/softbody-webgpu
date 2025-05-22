@@ -120,7 +120,7 @@ function createClampedInput(input: HTMLInputElement, min: number | (() => number
 }
 // options
 createClampedInput(document.getElementById('particleRadius') as HTMLInputElement, 1, 500, 1, simulation.options);
-createClampedInput(document.getElementById('subticks') as HTMLInputElement, 2, 192, 2, simulation.options);
+createClampedInput(document.getElementById('subticks') as HTMLInputElement, 2, 256, 2, simulation.options);
 // keyboard force
 createClampedInput(document.getElementById('keyboardForce') as HTMLInputElement, 0.1, 10, 0.1, (v) => simulation.instance.keyboardForce = v ?? simulation.instance.keyboardForce);
 // constants
