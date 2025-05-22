@@ -529,6 +529,7 @@ class WGPUSoftbodyEngineWorker {
         const buffers = await this.buffers;
         const stagingBuffers = await this.stagingBuffers;
         const bufferMapper = await this.bufferMapper;
+        await device.queue.onSubmittedWorkDone();
         // if only there was a readBuffer convenience function
         const encoder = device.createCommandEncoder();
         encoder.copyBufferToBuffer(buffers.metadata, 0, stagingBuffers.metadata, 0, buffers.metadata.size);
@@ -557,6 +558,7 @@ class WGPUSoftbodyEngineWorker {
         const device = await this.device;
         const buffers = await this.buffers;
         const bufferMapper = await this.bufferMapper;
+        await device.queue.onSubmittedWorkDone();
         device.queue.writeBuffer(buffers.metadata, 0, bufferMapper.metadata, 0);
         device.queue.writeBuffer(buffers.mapping, 0, bufferMapper.mapping, 0);
         device.queue.writeBuffer(buffers.particlesA, 0, bufferMapper.particleData, 0);

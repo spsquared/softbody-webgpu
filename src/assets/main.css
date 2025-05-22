@@ -45,9 +45,12 @@ select:disabled {
     width: 100%;
     height: 100%;
     flex-direction: row;
+    align-items: stretch;
 }
 
 #canvasContainer {
+    position: sticky;
+    top: 8px;
     box-sizing: border-box;
     margin: 8px 8px;
     --canvas-size: calc(min(100vw, 100vh) - 16px);
@@ -55,7 +58,7 @@ select:disabled {
     width: var(--canvas-size);
     height: var(--canvas-size);
     border: 4px solid #555;
-    align-self: center;
+    align-self: start;
 }
 
 #canvas {
@@ -81,6 +84,11 @@ select:disabled {
         flex-direction: column;
     }
 
+    #canvasContainer {
+        position: static;
+        align-self: center;
+    }
+
     #controlsContainer {
         padding-left: 8px;
         padding-top: 0px;
@@ -100,7 +108,8 @@ select:disabled {
     padding: 4px 4px;
 }
 
-.pairGrid {
+.pairGrid,
+.pairGrid2 {
     display: grid;
     grid-template-columns: max-content 1fr;
     row-gap: 4px;
@@ -112,11 +121,24 @@ select:disabled {
     justify-self: flex-end;
 }
 
+.pairGrid2>*:nth-child(odd) {
+    justify-self: stretch;
+    text-align: center;
+}
+
+code {
+    background-color: #EEE;
+    border: 1px solid #AAA;
+    border-radius: 0.2em;
+    padding: 0em 0.4em;
+}
+
 #snapshotButtons {
     display: flex;
     flex-direction: row;
     column-gap: 4px;
 }
+
 #snapshotButtons>input {
     flex-grow: 1;
 }

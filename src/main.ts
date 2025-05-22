@@ -255,6 +255,10 @@ function oofDefaultState(mapper: BufferMapper) {
 }
 
 // edit mode
+const resetButton = document.getElementById('resetButton') as HTMLInputElement;
+const editInitialButton = document.getElementById('editInitialButton') as HTMLInputElement;
+const editCurrentButton = document.getElementById('editCurrentButton') as HTMLInputElement;
+const simulateButton = document.getElementById('simulateButton') as HTMLInputElement;
 const editor: {
     instance: SoftbodyEditor,
     initialState: ArrayBuffer,
@@ -276,6 +280,70 @@ const editor: {
 editor.instance.destroy();
 editor.instance.beamSettings = { spring: 10, damp: 10 };
 editor.instance.snapGridSize = 10;
+
+// inputs for editing
+const editModeToggle = document.getElementById('editModeToggleButton') as HTMLInputElement;
+editModeToggle.addEventListener('click', () => {
+    if (allButtonsDisabled || !editor.is) return;
+    if (editor.instance.editMode == 'particle') {
+        editor.instance.setEditMode('beam');
+        editButtonsDivs[2].style.display = '';
+        editModeToggle.value = 'Edit: Beams';
+        loadClamps();
+        updateClamps();
+    } else {
+        editor.instance.setEditMode('particle');
+        editButtonsDivs[2].style.display = 'none';
+        editModeToggle.value = 'Edit: Particles';
+    }
+});
+createClampedInput(document.getElementById('beamSpring') as HTMLInputElement, 0, 2000, 0.1, (s) => editor.instance.beamSettings.spring = s ?? editor.instance.beamSettings.spring);
+createClampedInput(document.getElementById('beamDamp') as HTMLInputElement, 0, 2000, 0.1, (d) => editor.instance.beamSettings.damp = d ?? editor.instance.beamSettings.damp);
+createClampedInput(document.getElementById('triangulationDistance') as HTMLInputElement, 0, 1000, 10, (d) => editor.instance.autoTriangulateDistance = d ?? editor.instance.autoTriangulateDistance);
+createClampedInput(document.getElementById('snapGridSize') as HTMLInputElement, 0, 100, 10, (d) => editor.instance.snapGridSize = d ?? editor.instance.snapGridSize);
+const editLoadButton = document.getElementById('editLoadButton') as HTMLInputElement;
+const editSaveButton = document.getElementById('editSaveButton') as HTMLInputElement;
+async function downloadEdit() {
+    if (allButtonsDisabled || !editor.is) return;
+    disableAllButtons();
+    const blob = new Blob([await editor.instance.save()]);
+    enableAllButtons();
+    const url = URL.createObjectURL(blob);
+    const a = document.createElement('a');
+    a.href = url;
+    a.download = `save-${Math.floor(Date.now() / 1000)}.dat`;
+    a.click();
+    URL.revokeObjectURL(url);
+}
+async function uploadEdit() {
+    const input = document.createElement('input');
+    input.type = 'file';
+    input.accept = '.dat';
+    input.addEventListener('change', async () => {
+        const file = input.files?.item(0);
+        if (file == null) return;
+        if (allButtonsDisabled || !editor.is) return;
+        disableAllButtons();
+        const buf = await file.arrayBuffer();
+        const res = await editor.instance.load(buf);
+        if (res) {
+            loadClamps();
+            updateClamps();
+        } else {
+            // oh no buffers too large
+            console.error('Snapshot failed to load due to buffers being too large.\nThis can happen when the snapshot is created and then loaded on a different device with fewer resources.');
+            alert('Snapshot could not load; too large for this device');
+        }
+        enableAllButtons();
+    });
+    input.click();
+}
+editLoadButton.addEventListener('click', (e) => uploadEdit());
+editSaveButton.addEventListener('click', (e) => downloadEdit());
+
+// switching and stuff
+const simulationControlHints = document.getElementById('simulationControlHints') as HTMLDivElement;
+const editorControlHints = document.getElementById('editorControlHints') as HTMLDivElement;
 async function resetToInitial() {
     if (editor.is) return;
     disableAllButtons();
@@ -312,9 +380,11 @@ async function switchToEditor() {
     editor.instance.beamSettings = beamSettings;
     editor.instance.snapGridSize = grid;
     editor.instance.autoTriangulateDistance = triangulation;
+    editor.is = true;
     loadClamps();
     updateClamps();
-    editor.is = true;
+    simulationControlHints.style.display = 'none';
+    editorControlHints.style.display = '';
     enableAllButtons();
 }
 async function switchToSimulation() {
@@ -332,76 +402,32 @@ async function switchToSimulation() {
     editor.is = false;
     loadClamps();
     updateClamps();
+    simulationControlHints.style.display = '';
+    editorControlHints.style.display = 'none';
     enableSimulationButtons();
     enableAllButtons();
 }
-document.getElementById('resetButton')!.addEventListener('click', () => !allButtonsDisabled && resetToInitial());
-document.getElementById('editInitialButton')!.addEventListener('click', () => !allButtonsDisabled && resetToInitial().then(() => switchToEditor()));
-document.getElementById('editCurrentButton')!.addEventListener('click', () => !allButtonsDisabled && setInitialState().then(() => switchToEditor()));
-document.getElementById('simulateButton')!.addEventListener('click', () => !allButtonsDisabled && switchToSimulation());
+resetButton.addEventListener('click', () => !allButtonsDisabled && resetToInitial());
+editInitialButton.addEventListener('click', () => !allButtonsDisabled && resetToInitial().then(() => switchToEditor()));
+editCurrentButton.addEventListener('click', () => !allButtonsDisabled && setInitialState().then(() => switchToEditor()));
+simulateButton.addEventListener('click', () => !allButtonsDisabled && switchToSimulation());
 resetToInitial();
 editButtonsDivs[1].style.display = 'none';
-// some spaghetti
-const editModeToggle = document.getElementById('editModeToggleButton') as HTMLInputElement;
-editModeToggle.addEventListener('click', () => {
-    if (allButtonsDisabled || !editor.is) return;
-    if (editor.instance.editMode == 'particle') {
-        editor.instance.setEditMode('beam');
-        editButtonsDivs[2].style.display = '';
-        editModeToggle.value = 'Edit: Beams';
-        loadClamps();
-        updateClamps();
-    } else {
-        editor.instance.setEditMode('particle');
-        editButtonsDivs[2].style.display = 'none';
-        editModeToggle.value = 'Edit: Particles';
-    }
-});
-document.addEventListener('keydown', (e) => {
-    if (allButtonsDisabled || !editor.is) return;
-    if (e.key.toLowerCase() == 'enter') editModeToggle.click();
-});
-createClampedInput(document.getElementById('beamSpring') as HTMLInputElement, 0, 2000, 0.1, (s) => editor.instance.beamSettings.spring = s ?? editor.instance.beamSettings.spring);
-createClampedInput(document.getElementById('beamDamp') as HTMLInputElement, 0, 2000, 0.1, (d) => editor.instance.beamSettings.damp = d ?? editor.instance.beamSettings.damp);
-createClampedInput(document.getElementById('triangulationDistance') as HTMLInputElement, 0, 1000, 10, (d) => editor.instance.autoTriangulateDistance = d ?? editor.instance.autoTriangulateDistance);
-createClampedInput(document.getElementById('snapGridSize') as HTMLInputElement, 0, 100, 10, (d) => editor.instance.snapGridSize = d ?? editor.instance.snapGridSize);
-async function downloadEdit() {
-    if (allButtonsDisabled || !editor.is) return;
-    disableAllButtons();
-    const blob = new Blob([await editor.instance.save()]);
-    enableAllButtons();
-    const url = URL.createObjectURL(blob);
-    const a = document.createElement('a');
-    a.href = url;
-    a.download = `save-${Math.floor(Date.now() / 1000)}.dat`;
-    a.click();
-    URL.revokeObjectURL(url);
-}
-async function uploadEdit() {
-    const input = document.createElement('input');
-    input.type = 'file';
-    input.accept = '.dat';
-    input.addEventListener('change', async () => {
-        const file = input.files?.item(0);
-        if (file == null) return;
-        if (allButtonsDisabled || !editor.is) return;
-        disableAllButtons();
-        const buf = await file.arrayBuffer();
-        const res = await editor.instance.load(buf);
-        if (res) {
-            loadClamps();
-            updateClamps();
-        } else {
-            // oh no buffers too large
-            console.error('Snapshot failed to load due to buffers being too large.\nThis can happen when the snapshot is created and then loaded on a different device with fewer resources.');
-            alert('Snapshot could not load; too large for this device');
-        }
-        enableAllButtons();
-    });
-    input.click();
-}
-document.getElementById('editLoadButton')!.addEventListener('click', (e) => uploadEdit());
-document.getElementById('editSaveButton')!.addEventListener('click', (e) => downloadEdit());
 editButtonsDivs[2].style.display = 'none';
 editButtonsDivs[3].style.display = 'none';
 editButtonsDivs[4].style.display = 'none';
+editorControlHints.style.display = 'none';
+
+// shortcuts for buttons
+document.addEventListener('keydown', (e) => {
+    if (e.target instanceof HTMLElement && e.target.matches('input[type=text],input[type=number],button,textarea,select')) return;
+    const key = e.key.toLowerCase();
+    if (key == 'enter') editModeToggle.click();
+    else if (key == 'r' && e.ctrlKey && !e.shiftKey && !e.altKey) resetButton.click();
+    else if (key == 'e' && e.ctrlKey && !e.shiftKey && !e.altKey) (editor.is ? simulateButton : editInitialButton).click();
+    else if (key == 'p' && e.ctrlKey && !e.shiftKey && !e.altKey) (editor.is ? simulateButton : editCurrentButton).click();
+    else if (key == 's' && e.ctrlKey && !e.shiftKey && !e.altKey) (editor.is ? editSaveButton : saveSnapshotButton).click();
+    else if (key == 'o' && e.ctrlKey && !e.shiftKey && !e.altKey) (editor.is ? editLoadButton : loadSnapshotButton).click();
+    else return;
+    e.preventDefault(); // if anything was activated
+});

@@ -105,10 +105,10 @@ export class WGPUSoftbodyEngine {
             e.preventDefault();
         }, { passive: false }],
         keydown: (e) => {
-            this.heldKeys.add(e.key.toLowerCase());
-            this.updateKeyboard();
             if (e.target instanceof HTMLElement && e.target.matches('input[type=text],input[type=number],button,textarea,select')) return;
             if (e.key == 'Alt') e.preventDefault();
+            this.heldKeys.add(e.key.toLowerCase());
+            this.updateKeyboard();
         },
         keyup: (e) => {
             if (e.key == 'Alt') e.preventDefault();
