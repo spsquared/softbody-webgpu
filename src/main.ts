@@ -147,15 +147,17 @@ applyOptionsButton.addEventListener('click', async () => {
     enableAllButtons();
 });
 applyConstantsButton.addEventListener('click', async () => {
-    if (allButtonsDisabled || simulationButtonsDisabled) return;
+    // allow applying to editor for saving with physics constants
+    if (allButtonsDisabled) return;
     disableAllButtons();
-    await simulation.instance.setPhysicsConstants(simulation.constants);
+    if (!simulation.instance.destroyed) await simulation.instance.setPhysicsConstants(simulation.constants);
+    await editor.instance.setPhysicsConstants(simulation.constants);
     enableAllButtons();
 });
 
 // button things to prevent race conditions (sim buttons can be disabled separately but "all" can force them disabled too)
-const simulationButtons = [loadSnapshotButton, saveSnapshotButton, applyOptionsButton, applyConstantsButton];
-const allButtons = [...document.querySelectorAll('#editButtonsGrid1>input,#editButtonsGrid2>input,#editFileOptionsGrid>input'), ...simulationButtons] as HTMLInputElement[];
+const simulationButtons = [loadSnapshotButton, saveSnapshotButton, applyOptionsButton];
+const allButtons = [...document.querySelectorAll('#editButtonsGrid1>input,#editButtonsGrid2>input,#editFileOptionsGrid>input'), applyConstantsButton, ...simulationButtons] as HTMLInputElement[];
 const editButtonsDivs = [
     document.getElementById('editButtonsGrid1') as HTMLDivElement,
     document.getElementById('editButtonsGrid2') as HTMLDivElement,
@@ -328,6 +330,8 @@ async function switchToSimulation() {
     editButtonsDivs[3].style.display = 'none';
     editButtonsDivs[4].style.display = 'none';
     editor.is = false;
+    loadClamps();
+    updateClamps();
     enableSimulationButtons();
     enableAllButtons();
 }

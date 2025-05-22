@@ -1,6 +1,6 @@
 /// <reference types="@webgpu/types" />
 
-import { WGPUSoftbodyEngineOptions } from "./engine";
+import { WGPUSoftbodyEngineOptions, WGPUSoftbodyEnginePhysicsConstants } from "./engine";
 import { Beam, BufferMapper, Particle, Vector2D } from "./engineMapping";
 
 export class SoftbodyEditor {
@@ -515,6 +515,14 @@ export class SoftbodyEditor {
     }
     set snapGridSize(s: number) {
         this.action.snapGridSize = s;
+    }
+
+    // only to allow setting these for downloading/uploading
+    async setPhysicsConstants(constants: WGPUSoftbodyEnginePhysicsConstants): Promise<void> {
+        (await this.bufferMapper).meta.setPhysicsConstants(constants);
+    }
+    async getPhysicsConstants(): Promise<WGPUSoftbodyEnginePhysicsConstants> {
+        return (await this.bufferMapper).meta.getPhysicsConstants();
     }
 
     private visible: boolean = !document.hidden;
