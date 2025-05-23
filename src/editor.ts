@@ -802,7 +802,7 @@ export class SoftbodyEditor {
                 // hover particle for delete/move
                 modeText.push(`${this.action.deleteMode ? 'DELETE' : 'MOVE'}`);
                 // apply to entire selection
-                if (!this.action.deleteMode && this.action.selectedParticles) modeText.push('APPLY TO SELECTION');
+                if (!this.action.deleteMode && this.action.selectedParticles.has(this.action.hoverParticle)) modeText.push('APPLY TO SELECTION');
             } else if (!this.action.deleteMode) {
                 // add new particle
                 if (this.userInput.mouseInGrid) modeText.push(`ADD AT: ${this.vecString(this.snapParticle(this.userInput.mousePos))}`);
