@@ -18,8 +18,8 @@ type Mutable<T> = {
     -readonly [P in keyof T]: T[P]
 }
 
-// simulation mode
-const resolution = 800;
+// simulation mode (resolution maybe not best idea if on high-res screens since the scale dies)
+const resolution = Math.min(window.screen.availWidth, window.screen.availHeight);
 const simulation: {
     instance: WGPUSoftbodyEngine
     readonly options: Mutable<WGPUSoftbodyEngineOptions>

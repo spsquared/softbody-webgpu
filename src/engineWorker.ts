@@ -2,6 +2,7 @@
 
 import { WGPUSoftbodyEngineMessageTypes, WGPUSoftbodyEngineOptions } from './engine';
 import { Beam, BufferMapper, Particle, Vector2D } from './engineMapping';
+import { AsyncLock } from './lock';
 
 type BindGroupPair = { readonly layout: GPUBindGroupLayout, readonly group: GPUBindGroup };
 
@@ -31,6 +32,8 @@ class WGPUSoftbodyEngineWorker {
     private readonly ctx: GPUCanvasContext;
     private readonly device: Promise<GPUDevice>;
     private readonly textureFormat: GPUTextureFormat;
+
+    private readonly lock: AsyncLock = new AsyncLock();
 
     readonly boundsSize: number = 1000;
     readonly particleRadius: number = 10;
@@ -529,6 +532,7 @@ class WGPUSoftbodyEngineWorker {
         const buffers = await this.buffers;
         const stagingBuffers = await this.stagingBuffers;
         const bufferMapper = await this.bufferMapper;
+        await this.lock.acquire();
         await device.queue.onSubmittedWorkDone();
         // if only there was a readBuffer convenience function
         const encoder = device.createCommandEncoder();
@@ -553,11 +557,13 @@ class WGPUSoftbodyEngineWorker {
         stagingBuffers.particles.unmap();
         stagingBuffers.beams.unmap();
         stagingBuffers.mapping.unmap();
+        this.lock.release();
     }
     async writeBuffers(): Promise<void> {
         const device = await this.device;
         const buffers = await this.buffers;
         const bufferMapper = await this.bufferMapper;
+        await this.lock.acquire();
         await device.queue.onSubmittedWorkDone();
         device.queue.writeBuffer(buffers.metadata, 0, bufferMapper.metadata, 0);
         device.queue.writeBuffer(buffers.mapping, 0, bufferMapper.mapping, 0);
@@ -565,8 +571,10 @@ class WGPUSoftbodyEngineWorker {
         device.queue.writeBuffer(buffers.beams, 0, bufferMapper.beamData, 0);
         const encoder = device.createCommandEncoder();
         encoder.clearBuffer(buffers.beamForces, 0, buffers.beamForces.size);
+        encoder.clearBuffer(buffers.particlesB, 0, buffers.particlesB.size);
         device.queue.submit([encoder.finish()]);
         await device.queue.onSubmittedWorkDone();
+        this.lock.release();
     }
 
     private readonly userInput = {
@@ -582,6 +590,8 @@ class WGPUSoftbodyEngineWorker {
         const bufferMapper = await this.bufferMapper;
         const bindGroups = await this.bindGroups;
         const pipelines = await this.pipelines;
+        await this.lock.acquire();
+        await device.queue.onSubmittedWorkDone();
         // inputs
         const frameStart = performance.now();
         bufferMapper.meta.setUserInput(
@@ -634,6 +644,7 @@ class WGPUSoftbodyEngineWorker {
         // submit
         device.queue.submit([encoder.finish()]);
         await device.queue.onSubmittedWorkDone();
+        this.lock.release();
         // framerate stuff
         const now = performance.now();
         this.frameTimes.push(now);

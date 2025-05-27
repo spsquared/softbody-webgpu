@@ -128,7 +128,10 @@ fn compute_main(thread: ComputeParams) {
             let other_index = getMappedIndex(o_map_index);
             let other = particles_read[other_index];
             let dist = length(other.p - const_particle.p);
-            if (dist < particle_radius * 2 && dist > 0) {
+            if (dist == 0) {
+                // edge case of particles in exactly the same spot
+                particle.p.y += sign(f32(index) - f32(other_index));
+            } else if (dist < particle_radius * 2) {
                 let normal = normalize(other.p - const_particle.p);
                 let tangent = vec2<f32>(- normal.y, normal.x);
                 let inv_rel_velocity = const_particle.v - other.v;
