@@ -165,6 +165,8 @@ export class SoftbodyEditor {
         beamSettings: {
             spring: number
             damp: number
+            yieldStrain: number
+            strainLimit: number
         }
         // automatically create beams within a certain distance to triangulate things
         autoTriangulate: number
@@ -197,7 +199,9 @@ export class SoftbodyEditor {
             forceAddMode: false,
             beamSettings: {
                 spring: 0,
-                damp: 0
+                damp: 0,
+                yieldStrain: 0,
+                strainLimit: 0
             },
             autoTriangulate: 0,
             autoTriangulateParticles: new Set(),
@@ -266,7 +270,7 @@ export class SoftbodyEditor {
                 // add new beam from existing particle (A is existing, B is new/endpoint)
                 const endpoint = new Particle(bufferMapper.firstEmptyParticleId, this.snapParticle(this.userInput.mousePos));
                 bufferMapper.addParticle(endpoint);
-                this.action.activeBeam = new Beam(bufferMapper.firstEmptyBeamId, this.action.hoverParticle, endpoint, 0, 0, 0);
+                this.action.activeBeam = new Beam(bufferMapper.firstEmptyBeamId, this.action.hoverParticle, endpoint, 0, 0, 0, 0, 0);
                 bufferMapper.addBeam(this.action.activeBeam);
                 this.action.selectedBeams.clear();
             } else if (this.action.hoverBeam !== null && !this.action.forceAddMode) {
@@ -287,7 +291,7 @@ export class SoftbodyEditor {
                     bufferMapper.addParticle(new1);
                     const new2 = new Particle(bufferMapper.firstEmptyParticleId, this.snapParticle(this.userInput.mousePos));
                     bufferMapper.addParticle(new2);
-                    this.action.activeBeam = new Beam(bufferMapper.firstEmptyBeamId, new1, new2, 0, 0, 0);
+                    this.action.activeBeam = new Beam(bufferMapper.firstEmptyBeamId, new1, new2, 0, 0, 0, 0, 0);
                     bufferMapper.addBeam(this.action.activeBeam);
                     this.action.selectedBeams.clear();
                 }
@@ -317,19 +321,20 @@ export class SoftbodyEditor {
                     // place on top of existing particle (hover particle will never be active beam particle)
                     bufferMapper.removeParticle(this.action.activeBeam.b);
                     bufferMapper.removeBeam(this.action.activeBeam);
-                    this.action.activeBeam = new Beam(this.action.activeBeam.id, this.action.activeBeam.a, this.action.hoverParticle, 0, 0, 0);
+                    this.action.activeBeam = new Beam(this.action.activeBeam.id, this.action.activeBeam.a, this.action.hoverParticle, 0, 0, 0, 0, 0);
                     bufferMapper.addBeam(this.action.activeBeam);
                 }
                 // set length & settings of beam
                 const [a, b] = await this.getEndpoints(this.action.activeBeam);
                 this.action.activeBeam.length = a.sub(b).magnitude;
+                this.action.activeBeam.targetLen = this.action.activeBeam.length;
                 this.action.activeBeam.lastLen = this.action.activeBeam.length;
                 this.action.activeBeam.spring = this.action.beamSettings.spring;
                 this.action.activeBeam.damp = this.action.beamSettings.damp;
                 // triangulation weee
                 if (this.action.autoTriangulate > 0) {
                     for (const p of this.action.autoTriangulateParticles) {
-                        bufferMapper.addBeam(new Beam(bufferMapper.firstEmptyBeamId, this.action.activeBeam.b, p, b.sub(p.position).magnitude, this.action.beamSettings.spring, this.action.beamSettings.damp));
+                        bufferMapper.addBeam(new Beam(bufferMapper.firstEmptyBeamId, this.action.activeBeam.b, p, b.sub(p.position).magnitude, this.action.beamSettings.spring, this.action.beamSettings.damp, this.action.beamSettings.yieldStrain, this.action.beamSettings.strainLimit));
                     }
                 }
                 // stop moving
@@ -485,6 +490,7 @@ export class SoftbodyEditor {
             for (const b of this.action.selectedBeams) {
                 const [p, q] = await this.getEndpoints(b);
                 b.length = p.sub(q).magnitude;
+                b.targetLen = b.length;
                 b.lastLen = b.length;
             }
         }
@@ -614,9 +620,7 @@ export class SoftbodyEditor {
         const beams = bufferMapper.beamSet;
         this.ctx.lineWidth = 1;
         this.ctx.lineCap = 'round';
-        const stressQuantization = 16;
         const stressScale = 1 / 20; // arbitrary, beams will saturate stress colors
-        const stressLevelBeams: Set<[Vector2D, Vector2D]>[] = Array.from({ length: 2 * stressQuantization + 1 }, () => new Set());
         const invalidBeams = new Set<Beam>();
         for (const b of beams) {
             const p1 = typeof b.a == 'number' ? bufferMapper.findParticle(b.a) : b.a;
@@ -624,20 +628,14 @@ export class SoftbodyEditor {
             if (p1 === null || p2 === null) invalidBeams.add(b);
             else {
                 const len = p1.position.sub(p2.position).magnitude;
-                const force = (b.length - len) * b.spring + (b.lastLen - len) * b.damp;
-                // positive = compression, negative = tension (multiplication by quantization * 2 because stress color in compute is funny)
-                stressLevelBeams[Math.max(0, Math.min(stressLevelBeams.length - 1, Math.round(force * stressScale * stressQuantization * 2 + stressQuantization)))].add([p1.position, p2.position]);
+                const strain = Math.abs(b.targetLen - len) / b.length;
+                const stress = ((b.targetLen - len) * b.spring + (b.lastLen - len) * b.damp) * stressScale;
+                this.ctx.strokeStyle = `rgba(${Math.max(0, Math.min(1, stress + 1)) * 255}, ${Math.max(0, Math.min(1, -stress + 1)) * 255}, ${Math.max(0, 1 - strain / b.strainLimit) * 255}, 1)`;
+                this.ctx.beginPath();
+                this.ctx.moveTo(p1.position.x, p1.position.y);
+                this.ctx.lineTo(p2.position.x, p2.position.y);
+                this.ctx.stroke();
             }
-        }
-        for (let i = 0; i < stressLevelBeams.length; i++) {
-            const stress = (i - stressQuantization) / stressQuantization;
-            this.ctx.strokeStyle = `rgba(${Math.min(1, stress + 1) * 255}, ${Math.min(1, -stress + 1) * 255}, 255, 1)`;
-            this.ctx.beginPath();
-            for (const [p1, p2] of stressLevelBeams[i]) {
-                this.ctx.moveTo(p1.x, p1.y);
-                this.ctx.lineTo(p2.x, p2.y);
-            }
-            this.ctx.stroke();
         }
         // invalid beams
         this.ctx.strokeStyle = '#FF00FF';

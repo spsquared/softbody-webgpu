@@ -7,7 +7,7 @@
     ],
     "compilerOptions": {
         "lib": ["DOM", "WebWorker"],
-        "types": ["@webgpu/types"],
+        "types": ["@webgpu/types", "vite/client"],
         "typeRoots": ["./node_modules/@webgpu/types"],
         "paths": {
             "@/*": [

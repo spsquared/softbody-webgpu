@@ -20,10 +20,14 @@ struct Particle {
 
 struct Beam {
     particle_pair: u32,
+    length: f32,
     target_length: f32,
     last_length: f32,
     spring: f32,
     damp: f32,
+    yield_strain: f32,
+    strain_break_limit: f32,
+    strain: f32,
     stress: f32
 }
 
@@ -81,7 +85,7 @@ fn getMappedIndex(id: u32) -> u32 {
 fn compute_main(thread: ComputeParams) {
     // beam sim (inversion may help speed up simulation by spreading beams/particles across more threads)
     let beam_mapping_index = thread.num_workgroups.x * 64 - thread.global_invocation_id.x - 1;
-    if (beam_mapping_index >= 0) {
+    if (beam_mapping_index < metadata.beam_i_c) {
         let index = getMappedIndex(metadata.max_particles + beam_mapping_index);
         var beam = beams[index];
         let index_a = extractBits(beam.particle_pair, 0, 16);
@@ -97,11 +101,10 @@ fn compute_main(thread: ComputeParams) {
         // (ideal - current) * spring + (last - current) * damp
         let force_mag = (beam.target_length - len) * beam.spring + (beam.last_length - len) * beam.damp;
         let force = force_mag * normalize(diff);
+        let strain = abs(beam.target_length - len) / beam.length;
         beam.stress = force_mag * beam_stress_scale;
+        beam.strain = strain / beam.yield_strain;
         beam.last_length = len;
-        // TODO - add yield strength
-        // if a force is too strong the beam begins to behave plastically - its target length will change
-        // if the target length changes too much from its original length it will break
         beams[index] = beam;
         // atomics to add forces
         atomicAdd(&particle_forces[index_a * 2], i32(- force.x * particle_force_scale));

@@ -122,11 +122,11 @@ class WGPUSoftbodyEngineWorker {
             const device = await this.device;
             resolve({
                 compute: device.createShaderModule({
-                    label: 'Physics compute shader',
+                    label: import.meta.env.DEV ? 'Physics compute shader' : undefined,
                     code: await (await fetch(new URL('./shaders/compute.wgsl', import.meta.url))).text()
                 }),
                 render: device.createShaderModule({
-                    label: 'Particle render shader',
+                    label: import.meta.env.DEV ? 'Particle render shader' : undefined,
                     code: await (await fetch(new URL('./shaders/render.wgsl', import.meta.url))).text()
                 })
             });
@@ -136,32 +136,32 @@ class WGPUSoftbodyEngineWorker {
             const bufferMapper = await this.bufferMapper;
             resolve({
                 metadata: device.createBuffer({
-                    label: 'Metadata buffer',
+                    label: import.meta.env.DEV ? 'Metadata buffer' : undefined,
                     size: bufferMapper.metadata.byteLength,
                     usage: GPUBufferUsage.STORAGE | GPUBufferUsage.INDIRECT | GPUBufferUsage.COPY_SRC | GPUBufferUsage.COPY_DST
                 }),
                 particlesA: device.createBuffer({
-                    label: 'Particle data buffer primary',
+                    label: import.meta.env.DEV ? 'Particle data buffer primary' : undefined,
                     size: bufferMapper.particleData.byteLength,
                     usage: GPUBufferUsage.STORAGE | GPUBufferUsage.VERTEX | GPUBufferUsage.COPY_SRC | GPUBufferUsage.COPY_DST
                 }),
                 particlesB: device.createBuffer({
-                    label: 'Particle data buffer secondary',
+                    label: import.meta.env.DEV ? 'Particle data buffer secondary' : undefined,
                     size: bufferMapper.particleData.byteLength,
                     usage: GPUBufferUsage.STORAGE | GPUBufferUsage.VERTEX | GPUBufferUsage.COPY_SRC | GPUBufferUsage.COPY_DST
                 }),
                 beams: device.createBuffer({
-                    label: 'Beam data buffer',
+                    label: import.meta.env.DEV ? 'Beam data buffer' : undefined,
                     size: bufferMapper.beamData.byteLength,
                     usage: GPUBufferUsage.STORAGE | GPUBufferUsage.VERTEX | GPUBufferUsage.COPY_SRC | GPUBufferUsage.COPY_DST
                 }),
                 mapping: device.createBuffer({
-                    label: 'Mapping buffer',
+                    label: import.meta.env.DEV ? 'Mapping buffer' : undefined,
                     size: bufferMapper.mapping.byteLength,
                     usage: GPUBufferUsage.STORAGE | GPUBufferUsage.INDEX | GPUBufferUsage.COPY_SRC | GPUBufferUsage.COPY_DST
                 }),
                 beamForces: device.createBuffer({
-                    label: 'Totally necessary beam forces buffer',
+                    label: import.meta.env.DEV ? 'Totally necessary beam forces buffer' : undefined,
                     size: bufferMapper.maxParticles * Uint32Array.BYTES_PER_ELEMENT * 2,
                     usage: GPUBufferUsage.STORAGE | GPUBufferUsage.COPY_DST
                 })
@@ -217,28 +217,28 @@ class WGPUSoftbodyEngineWorker {
                 {
                     binding: 0,
                     resource: {
-                        label: 'Metadata buffer binding',
+                        label: import.meta.env.DEV ? 'Metadata buffer binding' : undefined,
                         buffer: buffers.metadata
                     }
                 },
                 {
                     binding: 3,
                     resource: {
-                        label: 'Beam buffer binding',
+                        label: import.meta.env.DEV ? 'Beam buffer binding' : undefined,
                         buffer: buffers.beams
                     }
                 },
                 {
                     binding: 4,
                     resource: {
-                        label: 'Mapping buffer binding',
+                        label: import.meta.env.DEV ? 'Mapping buffer binding' : undefined,
                         buffer: buffers.mapping
                     }
                 },
                 {
                     binding: 5,
                     resource: {
-                        label: 'Totally necessary beam forces buffer binding',
+                        label: import.meta.env.DEV ? 'Totally necessary beam forces buffer binding' : undefined,
                         buffer: buffers.beamForces
                     }
                 }
@@ -249,21 +249,21 @@ class WGPUSoftbodyEngineWorker {
                 computeA: {
                     layout: computeBindGroupLayout,
                     group: device.createBindGroup({
-                        label: 'Compute bind group A',
+                        label: import.meta.env.DEV ? 'Compute bind group A' : undefined,
                         layout: computeBindGroupLayout,
                         entries: [
                             ...computeCommonEntries,
                             {
                                 binding: 1,
                                 resource: {
-                                    label: 'Particle buffer primary binding A',
+                                    label: import.meta.env.DEV ? 'Particle buffer primary binding A' : undefined,
                                     buffer: buffers.particlesA
                                 }
                             },
                             {
                                 binding: 2,
                                 resource: {
-                                    label: 'Particle buffer secondary binding A',
+                                    label: import.meta.env.DEV ? 'Particle buffer secondary binding A' : undefined,
                                     buffer: buffers.particlesB
                                 }
                             }
@@ -273,21 +273,21 @@ class WGPUSoftbodyEngineWorker {
                 computeB: {
                     layout: computeBindGroupLayout,
                     group: device.createBindGroup({
-                        label: 'Compute bind group B',
+                        label: import.meta.env.DEV ? 'Compute bind group B' : undefined,
                         layout: computeBindGroupLayout,
                         entries: [
                             ...computeCommonEntries,
                             {
                                 binding: 1,
                                 resource: {
-                                    label: 'Particle buffer secondary binding B',
+                                    label: import.meta.env.DEV ? 'Particle buffer secondary binding B' : undefined,
                                     buffer: buffers.particlesB
                                 }
                             },
                             {
                                 binding: 2,
                                 resource: {
-                                    label: 'Particle buffer primary binding B',
+                                    label: import.meta.env.DEV ? 'Particle buffer primary binding B' : undefined,
                                     buffer: buffers.particlesA
                                 }
                             }
@@ -297,13 +297,13 @@ class WGPUSoftbodyEngineWorker {
                 renderBeams: {
                     layout: renderBindGroupLayout,
                     group: device.createBindGroup({
-                        label: 'Render bind group',
+                        label: import.meta.env.DEV ? 'Render bind group' : undefined,
                         layout: renderBindGroupLayout,
                         entries: [
                             {
                                 binding: 1,
                                 resource: {
-                                    label: 'Particle buffer binding',
+                                    label: import.meta.env.DEV ? 'Particle buffer binding' : undefined,
                                     buffer: buffers.particlesA
                                 }
                             }
@@ -319,9 +319,9 @@ class WGPUSoftbodyEngineWorker {
             // unforunately we need two render pipelines as we need two index buffers
             resolve({
                 compute: await device.createComputePipelineAsync({
-                    label: 'Compute pipeline',
+                    label: import.meta.env.DEV ? 'Compute pipeline' : undefined,
                     layout: device.createPipelineLayout({
-                        label: 'Compute pipeline layout',
+                        label: import.meta.env.DEV ? 'Compute pipeline layout' : undefined,
                         bindGroupLayouts: [bindGroups.computeA.layout]
                     }),
                     compute: {
@@ -335,9 +335,9 @@ class WGPUSoftbodyEngineWorker {
                     }
                 }),
                 renderParticles: await device.createRenderPipelineAsync({
-                    label: 'Particle render pipeline',
+                    label: import.meta.env.DEV ? 'Particle render pipeline' : undefined,
                     layout: device.createPipelineLayout({
-                        label: 'Particle render pipeline layout',
+                        label: import.meta.env.DEV ? 'Particle render pipeline layout' : undefined,
                         bindGroupLayouts: []
                     }),
                     vertex: {
@@ -383,9 +383,9 @@ class WGPUSoftbodyEngineWorker {
                     }
                 }),
                 renderBeams: await device.createRenderPipelineAsync({
-                    label: 'Beam render pipeline',
+                    label: import.meta.env.DEV ? 'Beam render pipeline' : undefined,
                     layout: device.createPipelineLayout({
-                        label: 'Beam render pipeline layout',
+                        label: import.meta.env.DEV ? 'Beam render pipeline layout' : undefined,
                         bindGroupLayouts: [bindGroups.renderBeams.layout]
                     }),
                     vertex: {
@@ -411,7 +411,12 @@ class WGPUSoftbodyEngineWorker {
                                     {
                                         shaderLocation: 2,
                                         format: 'float32',
-                                        offset: 20
+                                        offset: 32
+                                    },
+                                    {
+                                        shaderLocation: 3,
+                                        format: 'float32',
+                                        offset: 36
                                     }
                                 ],
                                 stepMode: 'instance'
@@ -441,22 +446,22 @@ class WGPUSoftbodyEngineWorker {
             const bufferMapper = await this.bufferMapper;
             resolve({
                 metadata: device.createBuffer({
-                    label: 'Metadata staging buffer',
+                    label: import.meta.env.DEV ? 'Metadata staging buffer' : undefined,
                     size: bufferMapper.metadata.byteLength,
                     usage: GPUBufferUsage.MAP_READ | GPUBufferUsage.COPY_DST
                 }),
                 particles: device.createBuffer({
-                    label: 'Particle data staging buffer',
+                    label: import.meta.env.DEV ? 'Particle data staging buffer' : undefined,
                     size: bufferMapper.particleData.byteLength,
                     usage: GPUBufferUsage.MAP_READ | GPUBufferUsage.COPY_DST
                 }),
                 beams: device.createBuffer({
-                    label: 'Beam data staging buffer',
+                    label: import.meta.env.DEV ? 'Beam data staging buffer' : undefined,
                     size: bufferMapper.beamData.byteLength,
                     usage: GPUBufferUsage.MAP_READ | GPUBufferUsage.COPY_DST
                 }),
                 mapping: device.createBuffer({
-                    label: 'Mapping staging buffer',
+                    label: import.meta.env.DEV ? 'Mapping staging buffer' : undefined,
                     size: bufferMapper.mapping.byteLength,
                     usage: GPUBufferUsage.MAP_READ | GPUBufferUsage.COPY_DST
                 })
@@ -607,11 +612,12 @@ class WGPUSoftbodyEngineWorker {
         const encoder = device.createCommandEncoder();
         // multiple subticks help stabilize and make simulation more accurate
         const computePass = encoder.beginComputePass({
-            label: 'Engine compute pass'
+            label: import.meta.env.DEV ? 'Engine compute pass' : undefined
         });
         computePass.setPipeline(pipelines.compute);
         // using this will break if new particles/beams are added by the compute shader
-        const numWorkgroups = Math.ceil(Math.max(bufferMapper.meta.particleCount, bufferMapper.meta.beamCount) / this.workgroupSize);
+        // const numWorkgroups = Math.ceil(Math.max(bufferMapper.meta.particleCount, bufferMapper.meta.beamCount) / this.workgroupSize);
+        const numWorkgroups = Math.ceil(Math.max(bufferMapper.maxParticles, bufferMapper.maxBeams) / this.workgroupSize);
         for (let i = 0; i < this.subticks; i++) {
             // alternating bind groups - read from one buffer and write to the other (fixes collision asymmetry)
             if (i % 2 == 0) computePass.setBindGroup(0, bindGroups.computeA.group);
@@ -620,7 +626,7 @@ class WGPUSoftbodyEngineWorker {
         }
         computePass.end();
         const renderPass = encoder.beginRenderPass({
-            label: 'Render pass',
+            label: import.meta.env.DEV ? 'Render pass' : undefined,
             colorAttachments: [{
                 view: this.ctx.getCurrentTexture().createView(),
                 loadOp: 'clear',
@@ -628,18 +634,15 @@ class WGPUSoftbodyEngineWorker {
                 clearValue: { r: 0, g: 0, b: 0, a: this.blur }
             }]
         });
-        // TODO: fix drawing bugs after particles are deleted - index buffer is borked
         renderPass.setPipeline(pipelines.renderParticles);
         renderPass.setVertexBuffer(0, buffers.particlesA);
-        // renderPass.setIndexBuffer(buffers.mapping, 'uint16', 0, bufferMapper.maxParticles * 2);
-        // renderPass.drawIndexedIndirect(buffers.metadata, 0);
-        renderPass.drawIndirect(buffers.metadata, 0);
+        renderPass.setIndexBuffer(buffers.mapping, 'uint16', 0, bufferMapper.maxParticles * 2);
+        renderPass.drawIndexedIndirect(buffers.metadata, 0);
         renderPass.setPipeline(pipelines.renderBeams);
         renderPass.setVertexBuffer(0, buffers.beams);
         renderPass.setBindGroup(0, bindGroups.renderBeams.group);
-        // renderPass.setIndexBuffer(buffers.mapping, 'uint16', bufferMapper.maxParticles * 2, bufferMapper.maxBeams * 2);
-        // renderPass.drawIndexedIndirect(buffers.metadata, 20);
-        renderPass.drawIndirect(buffers.metadata, 20);
+        renderPass.setIndexBuffer(buffers.mapping, 'uint16', bufferMapper.maxParticles * 2, bufferMapper.maxBeams * 2);
+        renderPass.drawIndexedIndirect(buffers.metadata, 20);
         renderPass.end();
         // submit
         device.queue.submit([encoder.finish()]);

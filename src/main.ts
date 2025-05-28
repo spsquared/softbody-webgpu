@@ -202,28 +202,28 @@ function oofDefaultState(mapper: BufferMapper) {
     // bufferMapper.addParticle(new Particle(i++, new Vector2D(568, 400), new Vector2D(0, 0)));
     // bufferMapper.addParticle(new Particle(i++, new Vector2D(400, 300), new Vector2D(1, 0)));
     // bufferMapper.addParticle(new Particle(i++, new Vector2D(440, 300), new Vector2D(-1, 0)));
-    function addRectangle(ox: number, oy: number, d: number, w: number, h: number, bs: number, bd: number) {
+    function addRectangle(ox: number, oy: number, d: number, w: number, h: number, bs: number, bd: number, ys, sl) {
         for (let x = 0; x < w; x++) {
             for (let y = 0; y < h; y++) {
                 let b = i;
                 bufferMapper.addParticle(new Particle(i++, new Vector2D(x * d + ox, y * d + oy)));
-                if (y < h - 1) bufferMapper.addBeam(new Beam(j++, b, b + 1, d, bs, bd));
-                if (x < w - 1) bufferMapper.addBeam(new Beam(j++, b, b + h, d, bs, bd));
-                if (y < h - 1 && x < w - 1) bufferMapper.addBeam(new Beam(j++, b, b + h + 1, Math.SQRT2 * d, bs, bd));
-                if (y > 0 && x < w - 1) bufferMapper.addBeam(new Beam(j++, b, b + h - 1, Math.SQRT2 * d, bs, bd));
+                if (y < h - 1) bufferMapper.addBeam(new Beam(j++, b, b + 1, d, bs, bd, ys, sl));
+                if (x < w - 1) bufferMapper.addBeam(new Beam(j++, b, b + h, d, bs, bd, ys, sl));
+                if (y < h - 1 && x < w - 1) bufferMapper.addBeam(new Beam(j++, b, b + h + 1, Math.SQRT2 * d, bs, bd, ys, sl));
+                if (y > 0 && x < w - 1) bufferMapper.addBeam(new Beam(j++, b, b + h - 1, Math.SQRT2 * d, bs, bd, ys, sl));
             }
         }
     }
     // lines
     // addRectangle(10, 990, 25, 10, 1, 10, 100);
     // CUBES
-    addRectangle(185, 10, 60, 2, 2, 1, 50);
-    addRectangle(35, 10, 60, 2, 2, 1, 50);
-    addRectangle(20, 120, 30, 9, 4, 50, 700);
+    addRectangle(185, 10, 60, 2, 2, 1, 50, 1, 2.5);
+    addRectangle(35, 10, 60, 2, 2, 1, 50, 1, 2.5);
+    addRectangle(20, 120, 30, 9, 4, 50, 700, 0.8, 2);
     bufferMapper.addParticle(new Particle(i++, new Vector2D(445, 10)));
     bufferMapper.addParticle(new Particle(i++, new Vector2D(925, 10)));
-    addRectangle(400, 40, 30, 20, 2, 500, 800);
-    addRectangle(700, 400, 40, 5, 5, 2, 50);
+    addRectangle(400, 40, 30, 20, 2, 500, 800, 0.1, 0.5);
+    addRectangle(700, 400, 40, 5, 5, 2, 50, 0.4, 1);
     // lol staircase
     // const qa = 500;
     // const qb = 500;
@@ -244,8 +244,8 @@ function oofDefaultState(mapper: BufferMapper) {
     //     }
     //     guh += 2 * h;
     // }
-    addRectangle(20, 900, 50, 2, 2, 0.05, 10);
-    addRectangle(20, 700, 50, 2, 2, 0.1, 10);
+    addRectangle(20, 900, 50, 2, 2, 0.05, 10, 2, 3);
+    addRectangle(20, 700, 50, 2, 2, 0.1, 10, 2, 3);
     // spam
     // for (; i < 100;) {
     //     bufferMapper.addParticle(new Particle(i++, new Vector2D(Math.random() * this.gridSize, Math.random() * this.gridSize), new Vector2D(Math.random() * 20 - 10, Math.random() * 20 - 10)))
@@ -278,7 +278,7 @@ const editor: {
 };
 // immediately stop editor instance (easier than null typing oof)
 editor.instance.destroy();
-editor.instance.beamSettings = { spring: 10, damp: 10 };
+editor.instance.beamSettings = { spring: 10, damp: 10, yieldStrain: 1.1, strainLimit: 1 };
 editor.instance.snapGridSize = 10;
 
 // inputs for editing

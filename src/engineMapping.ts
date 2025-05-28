@@ -140,31 +140,41 @@ export class Beam {
      * Buffer stride in bytes. (note particles are IDs in JS, but indices in buffers)
      * - Particle A index: `uint16`
      * - Particle B index: `uint16`
+     * - Length: `f32`
      * - Target length: `f32`
      * - Last length: `f32`
      * - Spring constant: `f32`
      * - Damping constant: `f32`
+     * - Yield stress: `f32`
+     * - Strain break limit: `f32`
+     * - Most recent strain: `f32`
      * - Most recent stress: `f32`
      */
-    static readonly stride = 24;
+    static readonly stride = 40;
 
     /**IDs are transient and will be reassigned on write to buffer */
     readonly id: number;
     readonly a: number | Particle;
     readonly b: number | Particle;
-    length: number;
-    lastLen: number;
-    spring: number;
-    damp: number;
+    length: number; // original length of beam
+    targetLen: number; // target length of beam, affected by plastic deformation
+    lastLen: number; // actual length in previous tick
+    spring: number; // spring constant (elastic deformation, stress from strain from target length)
+    damp: number; // damping constant (energy loss from strain, stress from change in actual length)
+    yieldStrain: number; // maximum strain (proportion of original length) before plastic deformation occurs
+    strainLimit: number; // maximum strain (proportion of original length) before beam completely breaks
 
-    constructor(id: number, a: number | Particle, b: number | Particle, length: number, spring: number, damp: number, lastLen?: number) {
+    constructor(id: number, a: number | Particle, b: number | Particle, length: number, spring: number, damp: number, yieldStrain: number, strainLimit: number, targetLen?: number, lastLen?: number) {
         this.id = id;
         this.a = a;
         this.b = b;
         this.length = length;
+        this.targetLen = targetLen ?? this.length;
         this.lastLen = lastLen ?? this.length;
         this.spring = spring;
         this.damp = damp;
+        this.yieldStrain = yieldStrain;
+        this.strainLimit = strainLimit;
     }
 
     to(bBuf: ArrayBuffer, mBuf: Uint16Array, index: number, mBufOffset: number): void {
@@ -177,9 +187,12 @@ export class Beam {
         uint16View[0] = indexA;
         uint16View[1] = indexB;
         f32View[1] = this.length;
-        f32View[2] = this.lastLen;
-        f32View[3] = this.spring;
-        f32View[4] = this.damp;
+        f32View[2] = this.targetLen;
+        f32View[3] = this.lastLen;
+        f32View[4] = this.spring;
+        f32View[5] = this.damp;
+        f32View[6] = this.yieldStrain;
+        f32View[7] = this.strainLimit;
     }
 
     static from(bBuf: ArrayBuffer, mBuf: Uint16Array, id: number, mBufOffset: number): Beam {
@@ -189,7 +202,7 @@ export class Beam {
         // quite costly, but there isn't an easy good solution
         const idA = mBuf.indexOf(uint16View[0]);
         const idB = mBuf.indexOf(uint16View[1]);
-        return new Beam(id, idA, idB, f32View[1], f32View[3], f32View[4], f32View[2]);
+        return new Beam(id, idA, idB, f32View[1], f32View[4], f32View[5], f32View[6], f32View[7], f32View[2], f32View[3]);
 
     }
 }
@@ -501,7 +514,7 @@ export class BufferMapper {
             const b = beams[i];
             const idA = particleIdRemap.get(typeof b.a == 'number' ? b.a : b.a.id) ?? b.a;
             const idB = particleIdRemap.get(typeof b.b == 'number' ? b.b : b.b.id) ?? b.b;
-            new Beam(i, idA, idB, b.length, b.spring, b.damp, b.lastLen).to(this.beamData, this.mappingUint16View, i, this.maxParticles);
+            new Beam(i, idA, idB, b.length, b.spring, b.damp, b.yieldStrain, b.strainLimit, b.targetLen, b.lastLen).to(this.beamData, this.mappingUint16View, i, this.maxParticles);
         }
     }
     /**
