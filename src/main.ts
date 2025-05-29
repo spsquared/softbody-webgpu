@@ -278,7 +278,7 @@ const editor: {
 };
 // immediately stop editor instance (easier than null typing oof)
 editor.instance.destroy();
-editor.instance.beamSettings = { spring: 10, damp: 10, yieldStrain: 1.1, strainLimit: 1 };
+editor.instance.beamSettings = { spring: 10, damp: 10, yieldStrain: 0.1, strainLimit: 1 };
 editor.instance.snapGridSize = 10;
 
 // inputs for editing

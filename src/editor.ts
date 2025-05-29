@@ -331,6 +331,8 @@ export class SoftbodyEditor {
                 this.action.activeBeam.lastLen = this.action.activeBeam.length;
                 this.action.activeBeam.spring = this.action.beamSettings.spring;
                 this.action.activeBeam.damp = this.action.beamSettings.damp;
+                this.action.activeBeam.yieldStrain = this.action.beamSettings.yieldStrain;
+                this.action.activeBeam.strainLimit = this.action.beamSettings.strainLimit;
                 // triangulation weee
                 if (this.action.autoTriangulate > 0) {
                     for (const p of this.action.autoTriangulateParticles) {
