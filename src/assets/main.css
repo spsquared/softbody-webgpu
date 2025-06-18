@@ -179,3 +179,12 @@ code {
 #editFileOptionsGrid {
     margin-top: 4px;
 }
+
+#superSecretCorruptButton {
+    position: fixed;
+    bottom: 0px;
+    right: 0px;
+    width: 8px;
+    height: 8px;
+    cursor: help;
+}

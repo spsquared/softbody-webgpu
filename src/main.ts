@@ -264,7 +264,7 @@ const editor: {
     initialState: ArrayBuffer,
     is: boolean
 } = {
-    instance: new SoftbodyEditor(canvas, resolution),
+    instance: new SoftbodyEditor(canvas, resolution, simulation.options),
     // not spaghetti
     initialState: (() => {
         // arbitrary small size of buffer so no accidental out of bounds problems in load
@@ -369,7 +369,7 @@ async function switchToEditor() {
     const beamSettings = editor.instance.beamSettings;
     const grid = editor.instance.snapGridSize;
     const triangulation = editor.instance.autoTriangulateDistance;
-    editor.instance = new SoftbodyEditor(canvas, resolution);
+    editor.instance = new SoftbodyEditor(canvas, resolution, simulation.options);
     await editor.instance.load(editor.initialState);
     editButtonsDivs[0].style.display = 'none';
     editButtonsDivs[1].style.display = '';
@@ -431,3 +431,6 @@ document.addEventListener('keydown', (e) => {
     else return;
     e.preventDefault(); // if anything was activated
 });
+
+// dont worry about it
+document.getElementById('superSecretCorruptButton')?.addEventListener('click', () => simulation.instance.corruptBuffers());

@@ -528,6 +528,10 @@ class WGPUSoftbodyEngineWorker {
                 this.postMessage(WGPUSoftbodyEngineMessageTypes.SNAPSHOT_LOAD, res);
             }
                 break;
+            case WGPUSoftbodyEngineMessageTypes.CORRUPT_BUFFERS: {
+                this.corruptBuffers();
+            }
+                break;
         }
     }
     private onMessageWrapper = (e: MessageEvent) => this.onMessage(e);
@@ -580,6 +584,26 @@ class WGPUSoftbodyEngineWorker {
         device.queue.submit([encoder.finish()]);
         await device.queue.onSubmittedWorkDone();
         this.lock.release();
+    }
+
+    async corruptBuffers(): Promise<void> {
+        const device = await this.device;
+        const buffers = await this.buffers;
+        const corrupt = (buf: GPUBuffer) => {
+            const oof = new Uint32Array(1);
+            while (Math.random() < 0.5) {
+                oof[0] = Math.floor(Math.random() * 4294967296);
+                const pos = Math.floor(Math.random() * buf.size / 4) * 4;
+                device.queue.writeBuffer(buf, pos, oof.buffer, 0, 4);
+            }
+        };
+        // this will spawn race conditions all over the place lol
+        if (Math.random() < 0.1) corrupt(buffers.metadata);
+        corrupt(buffers.mapping);
+        corrupt(buffers.particlesA);
+        corrupt(buffers.particlesB);
+        corrupt(buffers.beams);
+        corrupt(buffers.beamForces);
     }
 
     private readonly userInput = {

@@ -11,7 +11,8 @@ export enum WGPUSoftbodyEngineMessageTypes {
     VISIBILITY_CHANGE,
     SNAPSHOT_SAVE,
     SNAPSHOT_LOAD,
-    FRAMERATE
+    FRAMERATE,
+    CORRUPT_BUFFERS
 }
 
 export type WGPUSoftbodyEngineOptions = {
@@ -196,6 +197,10 @@ export class WGPUSoftbodyEngine {
     }
     async loadSnapshot(buf: ArrayBuffer): Promise<boolean> {
         return await this.postMessageWithAck<boolean>(WGPUSoftbodyEngineMessageTypes.SNAPSHOT_LOAD, undefined, buf);
+    }
+
+    corruptBuffers(): void {
+        this.postMessage(WGPUSoftbodyEngineMessageTypes.CORRUPT_BUFFERS);
     }
 
     private running: boolean = true;
