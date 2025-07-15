@@ -2,11 +2,6 @@ override bounds_size: f32;
 override particle_radius: f32;
 override time_step: f32;
 
-@must_use
-fn cross2(u: vec2<f32>, v: vec2<f32>) -> f32 {
-    return u.x * v.y - u.y * v.x;
-}
-
 struct ComputeParams {
     @builtin(global_invocation_id) global_invocation_id: vec3<u32>,
     @builtin(num_workgroups) num_workgroups: vec3<u32>
@@ -74,19 +69,32 @@ var<storage, read_write> mappings: array<u32>;
 var<storage, read_write> particle_forces: array<atomic<i32>>;
 const particle_force_scale: f32 = 65536;
 const beam_stress_scale: f32 = 1.0 / 20.0;
+// big bitmask
+@group(0) @binding(6)
+var<storage, read_write> delete_mappings: array<u32>;
+var<workgroup> delete_index: array<atomic<u32>, 2>;
 
 // once again wgpu not having u16 is annoying
 @must_use
-fn getMappedIndex(id: u32) -> u32 {
+fn get_mapped_index(id: u32) -> u32 {
     return extractBits(mappings[id / 2], (id % 2) * 16, 16);
 }
 
+fn mark_particle_deleted(mapping_index: u32) {
+    delete_mappings[mapping_index / 32u] |= 1u << (mapping_index % 32);
+}
+fn mark_beam_deleted(mapping_index: u32) {
+    delete_mappings[(metadata.max_particles + mapping_index) / 32u] |= 1u << ((metadata.max_particles + mapping_index) % 32);
+}
+
 @compute @workgroup_size(64, 1, 1)
-fn compute_main(thread: ComputeParams) {
+fn compute_update(thread: ComputeParams) {
+    // no storage barriers because it barely affects accuracy and possibly harms performance by blocking threads
+
     // beam sim (inversion may help speed up simulation by spreading beams/particles across more threads)
     let beam_mapping_index = thread.num_workgroups.x * 64 - thread.global_invocation_id.x - 1;
     if (beam_mapping_index < metadata.beam_i_c) {
-        let index = getMappedIndex(metadata.max_particles + beam_mapping_index);
+        let index = get_mapped_index(metadata.max_particles + beam_mapping_index);
         var beam = beams[index];
         let index_a = extractBits(beam.particle_pair, 0, 16);
         let index_b = extractBits(beam.particle_pair, 16, 16);
@@ -101,9 +109,18 @@ fn compute_main(thread: ComputeParams) {
         // (ideal - current) * spring + (last - current) * damp
         let force_mag = (beam.target_length - len) * beam.spring + (beam.last_length - len) * beam.damp;
         let force = force_mag * normalize(diff);
-        let strain = abs(beam.target_length - len) / beam.length;
+        let strain = (len - beam.target_length) / beam.length;
+        if (abs(strain) > beam.yield_strain) {
+            // beam deforms to stay within yield strain
+            beam.target_length = len + beam.yield_strain * beam.length * sign(strain);
+        }
+        if (abs(len - beam.length) > beam.length * beam.strain_break_limit) {
+            // deleting stuff mid-tick is a great way to have beams not update or bork
+            // so a separate delete workgroup is dispatched after each tick
+            mark_beam_deleted(beam_mapping_index);
+        }
         beam.stress = force_mag * beam_stress_scale;
-        beam.strain = strain / beam.yield_strain;
+        beam.strain = abs(strain) / beam.yield_strain;
         beam.last_length = len;
         beams[index] = beam;
         // atomics to add forces
@@ -116,7 +133,7 @@ fn compute_main(thread: ComputeParams) {
     // particle sim
     let particle_mapping_index = thread.global_invocation_id.x;
     if (particle_mapping_index < metadata.particle_i_c) {
-        let index = getMappedIndex(particle_mapping_index);
+        let index = get_mapped_index(particle_mapping_index);
         // particles read from one buffer and write to the other buffer (buffers alternate in workgroup dispatches)
         // prevents collision asymmetry where particle A calculates a force, moves, then particle B calculates a different force
         var particle = particles_read[index];
@@ -128,13 +145,14 @@ fn compute_main(thread: ComputeParams) {
             if (o_map_index == particle_mapping_index) {
                 continue;
             }
-            let other_index = getMappedIndex(o_map_index);
+            let other_index = get_mapped_index(o_map_index);
             let other = particles_read[other_index];
             let dist = length(other.p - const_particle.p);
             if (dist == 0) {
                 // edge case of particles in exactly the same spot
                 particle.p.y += sign(f32(index) - f32(other_index));
-            } else if (dist < particle_radius * 2) {
+            }
+            else if (dist < particle_radius * 2) {
                 let normal = normalize(other.p - const_particle.p);
                 let tangent = vec2<f32>(- normal.y, normal.x);
                 let inv_rel_velocity = const_particle.v - other.v;
@@ -182,5 +200,38 @@ fn compute_main(thread: ComputeParams) {
         particle.p = clamped_pos;
         // write
         particles_write[index] = particle;
+    }
+}
+
+@compute @workgroup_size(64, 1, 1)
+fn compute_delete(thread: ComputeParams) {
+    // wow it's that other workgroup, and only one workgroup is dispatched so the 1st invocation can be the "master"
+    let map_particle_step = metadata.particle_i_c / 64u + 1;
+    let map_particle_start = map_particle_step * thread.global_invocation_id.x;
+    let map_particle_end = min(metadata.particle_i_c, map_particle_step * (thread.global_invocation_id.x + 1));
+    let map_beam_step = metadata.beam_i_c / 64u + 1;
+    let map_beam_start = metadata.max_particles + map_beam_step * thread.global_invocation_id.x;
+    let map_beam_end = metadata.max_particles + min(metadata.beam_i_c, map_beam_step * (thread.global_invocation_id.x + 1));
+    if (thread.global_invocation_id.x == 0) {
+        atomicStore(&delete_index[0], metadata.particle_i_c - 1);
+        atomicStore(&delete_index[1], metadata.max_particles + metadata.beam_i_c - 1);
+    }
+    workgroupBarrier();
+    // deleting involves moving things around in mapping, hence the existence of this separate pipeline
+    for (var particle_map = map_particle_start; particle_map < map_particle_end; particle_map++) {
+        if ((delete_mappings[particle_map / 32u] & (1u << (particle_map % 32u))) > 0) {
+            mappings[particle_map] = mappings[atomicSub(&delete_index[0], 1)];
+        }
+    }
+    for (var beam_map = map_beam_start; beam_map < map_beam_end; beam_map++) {
+        if ((delete_mappings[beam_map / 32u] & (1u << (beam_map % 32u))) > 0) {
+            mappings[beam_map] = mappings[atomicSub(&delete_index[1], 1)];
+        }
+    }
+    workgroupBarrier();
+    storageBarrier();
+    if (thread.global_invocation_id.x == 0) {
+        metadata.particle_i_c = atomicLoad(&delete_index[0]) + 1;
+        metadata.beam_i_c = atomicLoad(&delete_index[1]) + 1 - metadata.max_particles;
     }
 }

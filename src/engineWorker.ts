@@ -4,6 +4,9 @@ import { WGPUSoftbodyEngineMessageTypes, WGPUSoftbodyEngineOptions } from './eng
 import { Beam, BufferMapper, Particle, Vector2D } from './engineMapping';
 import { AsyncLock } from './lock';
 
+import computeShader from './shaders/compute.wgsl?raw';
+import renderShader from './shaders/render.wgsl?raw';
+
 type BindGroupPair = { readonly layout: GPUBindGroupLayout, readonly group: GPUBindGroup };
 
 /**
@@ -46,7 +49,6 @@ class WGPUSoftbodyEngineWorker {
         readonly compute: GPUShaderModule
         readonly render: GPUShaderModule
     }>;
-
     private readonly bufferMapper: Promise<BufferMapper>;
     private readonly buffers: Promise<{
         readonly metadata: GPUBuffer
@@ -54,7 +56,8 @@ class WGPUSoftbodyEngineWorker {
         readonly particlesB: GPUBuffer
         readonly beams: GPUBuffer
         readonly mapping: GPUBuffer
-        readonly beamForces: GPUBuffer
+        readonly particleForces: GPUBuffer
+        readonly deleteMappings: GPUBuffer
     }>;
     private readonly bindGroups: Promise<{
         readonly computeA: BindGroupPair
@@ -62,7 +65,8 @@ class WGPUSoftbodyEngineWorker {
         readonly renderBeams: BindGroupPair
     }>;
     private readonly pipelines: Promise<{
-        readonly compute: GPUComputePipeline
+        readonly computeUpdate: GPUComputePipeline
+        readonly computeDelete: GPUComputePipeline
         readonly renderParticles: GPURenderPipeline
         readonly renderBeams: GPURenderPipeline
     }>;
@@ -123,11 +127,11 @@ class WGPUSoftbodyEngineWorker {
             resolve({
                 compute: device.createShaderModule({
                     label: import.meta.env.DEV ? 'Physics compute shader' : undefined,
-                    code: await (await fetch(new URL('./shaders/compute.wgsl', import.meta.url))).text()
+                    code: computeShader
                 }),
                 render: device.createShaderModule({
                     label: import.meta.env.DEV ? 'Particle render shader' : undefined,
-                    code: await (await fetch(new URL('./shaders/render.wgsl', import.meta.url))).text()
+                    code: renderShader
                 })
             });
         });
@@ -160,48 +164,35 @@ class WGPUSoftbodyEngineWorker {
                     size: bufferMapper.mapping.byteLength,
                     usage: GPUBufferUsage.STORAGE | GPUBufferUsage.INDEX | GPUBufferUsage.COPY_SRC | GPUBufferUsage.COPY_DST
                 }),
-                beamForces: device.createBuffer({
-                    label: import.meta.env.DEV ? 'Totally necessary beam forces buffer' : undefined,
+                particleForces: device.createBuffer({
+                    label: import.meta.env.DEV ? 'Totally necessary particle forces buffer' : undefined,
                     size: bufferMapper.maxParticles * Uint32Array.BYTES_PER_ELEMENT * 2,
                     usage: GPUBufferUsage.STORAGE | GPUBufferUsage.COPY_DST
-                })
+                }),
+                deleteMappings: device.createBuffer({
+                    label: import.meta.env.DEV ? 'Delete mappings buffer' : undefined,
+                    size: Math.ceil(bufferMapper.maxParticles + bufferMapper.maxBeams / Uint32Array.BYTES_PER_ELEMENT) * Uint32Array.BYTES_PER_ELEMENT,
+                    usage: GPUBufferUsage.STORAGE | GPUBufferUsage.COPY_DST
+                }),
             });
         });
         this.bindGroups = new Promise(async (resolve) => {
             const device = await this.device;
             const buffers = await this.buffers;
+            const computeLayoutEntry = (binding: number, type?: GPUBufferBindingType) => ({
+                binding: binding,
+                visibility: GPUShaderStage.COMPUTE,
+                buffer: { type: type ?? 'storage' }
+            });
             const computeBindGroupLayout = device.createBindGroupLayout({
                 entries: [
-                    {
-                        binding: 0,
-                        visibility: GPUShaderStage.COMPUTE,
-                        buffer: { type: 'storage' }
-                    },
-                    {
-                        binding: 1,
-                        visibility: GPUShaderStage.COMPUTE,
-                        buffer: { type: 'read-only-storage' }
-                    },
-                    {
-                        binding: 2,
-                        visibility: GPUShaderStage.COMPUTE,
-                        buffer: { type: 'storage' }
-                    },
-                    {
-                        binding: 3,
-                        visibility: GPUShaderStage.COMPUTE,
-                        buffer: { type: 'storage' }
-                    },
-                    {
-                        binding: 4,
-                        visibility: GPUShaderStage.COMPUTE,
-                        buffer: { type: 'storage' }
-                    },
-                    {
-                        binding: 5,
-                        visibility: GPUShaderStage.COMPUTE,
-                        buffer: { type: 'storage' }
-                    }
+                    computeLayoutEntry(0),
+                    computeLayoutEntry(1, 'read-only-storage'),
+                    computeLayoutEntry(2),
+                    computeLayoutEntry(3),
+                    computeLayoutEntry(4),
+                    computeLayoutEntry(5),
+                    computeLayoutEntry(6)
                 ]
             });
             const renderBindGroupLayout = device.createBindGroupLayout({
@@ -238,8 +229,15 @@ class WGPUSoftbodyEngineWorker {
                 {
                     binding: 5,
                     resource: {
-                        label: import.meta.env.DEV ? 'Totally necessary beam forces buffer binding' : undefined,
-                        buffer: buffers.beamForces
+                        label: import.meta.env.DEV ? 'Totally necessary particle forces buffer binding' : undefined,
+                        buffer: buffers.particleForces
+                    }
+                },
+                {
+                    binding: 6,
+                    resource: {
+                        label: import.meta.env.DEV ? 'Delete mappings buffer binding' : undefined,
+                        buffer: buffers.deleteMappings
                     }
                 }
             ];
@@ -316,22 +314,32 @@ class WGPUSoftbodyEngineWorker {
             const device = await this.device;
             const modules = await this.modules;
             const bindGroups = await this.bindGroups;
-            // unforunately we need two render pipelines as we need two index buffers
+            // two compute pipelines as deleting beams/particles from within the shaders requires syncing
+            const computeLayout = device.createPipelineLayout({
+                label: import.meta.env.DEV ? 'Compute pipeline layout' : undefined,
+                bindGroupLayouts: [bindGroups.computeA.layout]
+            });
             resolve({
-                compute: await device.createComputePipelineAsync({
-                    label: import.meta.env.DEV ? 'Compute pipeline' : undefined,
-                    layout: device.createPipelineLayout({
-                        label: import.meta.env.DEV ? 'Compute pipeline layout' : undefined,
-                        bindGroupLayouts: [bindGroups.computeA.layout]
-                    }),
+                computeUpdate: await device.createComputePipelineAsync({
+                    label: import.meta.env.DEV ? 'Physics compute pipeline' : undefined,
+                    layout: computeLayout,
                     compute: {
                         module: modules.compute,
-                        entryPoint: 'compute_main',
+                        entryPoint: 'compute_update',
                         constants: {
                             bounds_size: this.boundsSize,
                             particle_radius: this.particleRadius,
                             time_step: 1 / this.subticks,
                         }
+                    }
+                }),
+                computeDelete: await device.createComputePipelineAsync({
+                    label: import.meta.env.DEV ? 'Delete compute pipeline' : undefined,
+                    layout: computeLayout,
+                    compute: {
+                        module: modules.compute,
+                        entryPoint: 'compute_delete',
+                        constants: { }
                     }
                 }),
                 renderParticles: await device.createRenderPipelineAsync({
@@ -579,7 +587,8 @@ class WGPUSoftbodyEngineWorker {
         device.queue.writeBuffer(buffers.particlesA, 0, bufferMapper.particleData, 0);
         device.queue.writeBuffer(buffers.beams, 0, bufferMapper.beamData, 0);
         const encoder = device.createCommandEncoder();
-        encoder.clearBuffer(buffers.beamForces, 0, buffers.beamForces.size);
+        encoder.clearBuffer(buffers.particleForces, 0, buffers.particleForces.size);
+        encoder.clearBuffer(buffers.deleteMappings, 0, buffers.deleteMappings.size);
         encoder.clearBuffer(buffers.particlesB, 0, buffers.particlesB.size);
         device.queue.submit([encoder.finish()]);
         await device.queue.onSubmittedWorkDone();
@@ -603,7 +612,7 @@ class WGPUSoftbodyEngineWorker {
         corrupt(buffers.particlesA);
         corrupt(buffers.particlesB);
         corrupt(buffers.beams);
-        corrupt(buffers.beamForces);
+        corrupt(buffers.particleForces);
     }
 
     private readonly userInput = {
@@ -638,7 +647,7 @@ class WGPUSoftbodyEngineWorker {
         const computePass = encoder.beginComputePass({
             label: import.meta.env.DEV ? 'Engine compute pass' : undefined
         });
-        computePass.setPipeline(pipelines.compute);
+        computePass.setPipeline(pipelines.computeUpdate);
         // using this will break if new particles/beams are added by the compute shader
         // const numWorkgroups = Math.ceil(Math.max(bufferMapper.meta.particleCount, bufferMapper.meta.beamCount) / this.workgroupSize);
         const numWorkgroups = Math.ceil(Math.max(bufferMapper.maxParticles, bufferMapper.maxBeams) / this.workgroupSize);
@@ -646,8 +655,17 @@ class WGPUSoftbodyEngineWorker {
             // alternating bind groups - read from one buffer and write to the other (fixes collision asymmetry)
             if (i % 2 == 0) computePass.setBindGroup(0, bindGroups.computeA.group);
             else computePass.setBindGroup(0, bindGroups.computeB.group);
+            // computePass.dispatchWorkgroupsIndirect()
+            // computePass.dispatchWorkgroupsIndirect()
+            // computePass.dispatchWorkgroupsIndirect()
+            // computePass.dispatchWorkgroupsIndirect()
+            // computePass.dispatchWorkgroupsIndirect()
+            // computePass.dispatchWorkgroupsIndirect()
             computePass.dispatchWorkgroups(numWorkgroups, 1, 1);
         }
+        // anything that should be deleted is deleted afterward to avoid shuffling around in other threads' data
+        // computePass.setPipeline(pipelines.computeDelete);
+        // computePass.dispatchWorkgroups(1, 1, 1);
         computePass.end();
         const renderPass = encoder.beginRenderPass({
             label: import.meta.env.DEV ? 'Render pass' : undefined,

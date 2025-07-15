@@ -239,7 +239,7 @@ export class Metadata {
      * - User applied force - `vec2<f32>`
      */
     static readonly byteLength = 112;
-    // indirect buffer = 40
+    // indirect buffer (render) = 40
     // max particle + pad = 8
     // simulation constants = 32
     // game inputs = 32
