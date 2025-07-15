@@ -223,7 +223,7 @@ function oofDefaultState(mapper: BufferMapper) {
     bufferMapper.addParticle(new Particle(i++, new Vector2D(445, 10)));
     bufferMapper.addParticle(new Particle(i++, new Vector2D(925, 10)));
     addRectangle(400, 40, 30, 20, 2, 500, 800, 0.1, 0.5);
-    addRectangle(700, 400, 40, 5, 5, 2, 50, 0.4, 1);
+    addRectangle(700, 400, 40, 5, 5, 2, 50, 1, 5);
     // lol staircase
     // const qa = 500;
     // const qb = 500;

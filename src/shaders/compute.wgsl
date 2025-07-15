@@ -80,11 +80,11 @@ fn get_mapped_index(id: u32) -> u32 {
     return extractBits(mappings[id / 2], (id % 2) * 16, 16);
 }
 
-fn mark_particle_deleted(mapping_index: u32) {
-    delete_mappings[mapping_index / 32u] |= 1u << (mapping_index % 32);
+fn mark_particle_deleted(id: u32) {
+    delete_mappings[id / 32u] |= 1u << (id % 32);
 }
-fn mark_beam_deleted(mapping_index: u32) {
-    delete_mappings[(metadata.max_particles + mapping_index) / 32u] |= 1u << ((metadata.max_particles + mapping_index) % 32);
+fn mark_beam_deleted(id: u32) {
+    delete_mappings[(metadata.max_particles + id) / 32u] |= 1u << ((metadata.max_particles + id) % 32);
 }
 
 @compute @workgroup_size(64, 1, 1)
@@ -112,7 +112,7 @@ fn compute_update(thread: ComputeParams) {
         let strain = (len - beam.target_length) / beam.length;
         if (abs(strain) > beam.yield_strain) {
             // beam deforms to stay within yield strain
-            beam.target_length = len + beam.yield_strain * beam.length * sign(strain);
+            beam.target_length = len - beam.yield_strain * beam.length * sign(strain);
         }
         if (abs(len - beam.length) > beam.length * beam.strain_break_limit) {
             // deleting stuff mid-tick is a great way to have beams not update or bork
