@@ -220,12 +220,14 @@ fn compute_delete(thread: ComputeParams) {
     // deleting involves moving things around in mapping, hence the existence of this separate pipeline
     for (var particle_map = map_particle_start; particle_map < map_particle_end; particle_map++) {
         if ((delete_mappings[particle_map / 32u] & (1u << (particle_map % 32u))) > 0) {
-            mappings[particle_map] = mappings[atomicSub(&delete_index[0], 1)];
+            let replace_map = atomicSub(&delete_index[0], 1);
+            mappings[particle_map / 2] = insertBits(mappings[particle_map / 2], extractBits(mappings[replace_map / 2], (replace_map % 2) * 16, 16), (particle_map % 2) * 16, 16);
         }
     }
     for (var beam_map = map_beam_start; beam_map < map_beam_end; beam_map++) {
         if ((delete_mappings[beam_map / 32u] & (1u << (beam_map % 32u))) > 0) {
-            mappings[beam_map] = mappings[atomicSub(&delete_index[1], 1)];
+            let replace_map = atomicSub(&delete_index[1], 1);
+            mappings[beam_map / 2] = insertBits(mappings[beam_map / 2], extractBits(mappings[replace_map / 2], (replace_map % 2) * 16, 16), (beam_map % 2) * 16, 16);
         }
     }
     workgroupBarrier();

@@ -664,8 +664,8 @@ class WGPUSoftbodyEngineWorker {
             computePass.dispatchWorkgroups(numWorkgroups, 1, 1);
         }
         // anything that should be deleted is deleted afterward to avoid shuffling around in other threads' data
-        // computePass.setPipeline(pipelines.computeDelete);
-        // computePass.dispatchWorkgroups(1, 1, 1);
+        computePass.setPipeline(pipelines.computeDelete);
+        computePass.dispatchWorkgroups(1, 1, 1);
         computePass.end();
         const renderPass = encoder.beginRenderPass({
             label: import.meta.env.DEV ? 'Render pass' : undefined,
