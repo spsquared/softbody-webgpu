@@ -153,7 +153,7 @@ class WGPUSoftbodyEngineWorker {
                 particlesB: device.createBuffer({
                     label: import.meta.env.DEV ? 'Particle data buffer secondary' : undefined,
                     size: bufferMapper.particleData.byteLength,
-                    usage: GPUBufferUsage.STORAGE | GPUBufferUsage.VERTEX | GPUBufferUsage.COPY_SRC | GPUBufferUsage.COPY_DST
+                    usage: GPUBufferUsage.STORAGE | GPUBufferUsage.COPY_DST
                 }),
                 beams: device.createBuffer({
                     label: import.meta.env.DEV ? 'Beam data buffer' : undefined,
@@ -340,7 +340,7 @@ class WGPUSoftbodyEngineWorker {
                     compute: {
                         module: modules.compute,
                         entryPoint: 'compute_delete',
-                        constants: { }
+                        constants: {}
                     }
                 }),
                 renderParticles: await device.createRenderPipelineAsync({
@@ -368,7 +368,7 @@ class WGPUSoftbodyEngineWorker {
                                 ],
                                 stepMode: 'instance'
                             }
-                        ]
+                        ],
                     },
                     fragment: {
                         module: modules.render,
@@ -387,8 +387,8 @@ class WGPUSoftbodyEngineWorker {
                         ]
                     },
                     primitive: {
-                        topology: 'triangle-strip',
-                        stripIndexFormat: 'uint16'
+                        // topology: 'triangle-list'
+                        // topology: 'point-list'
                     }
                 }),
                 renderBeams: await device.createRenderPipelineAsync({
@@ -439,13 +439,15 @@ class WGPUSoftbodyEngineWorker {
                         targets: [
                             {
                                 format: this.textureFormat,
-                                // blending moment
+                                blend: {
+                                    color: { operation: 'add', srcFactor: 'one', dstFactor: 'one-minus-src-alpha' },
+                                    alpha: { operation: 'add', srcFactor: 'one', dstFactor: 'one-minus-src-alpha' }
+                                }
                             }
                         ]
                     },
                     primitive: {
-                        topology: 'line-strip',
-                        stripIndexFormat: 'uint16'
+                        topology: 'line-list'
                     }
                 })
             });
@@ -679,12 +681,12 @@ class WGPUSoftbodyEngineWorker {
         });
         renderPass.setPipeline(pipelines.renderParticles);
         renderPass.setVertexBuffer(0, buffers.particlesA);
-        renderPass.setIndexBuffer(buffers.mapping, 'uint16', 0, bufferMapper.maxParticles *  Uint16Array.BYTES_PER_ELEMENT);
+        renderPass.setIndexBuffer(buffers.mapping, 'uint16', 0, bufferMapper.maxParticles * Uint16Array.BYTES_PER_ELEMENT);
         renderPass.drawIndexedIndirect(buffers.metadata, 0);
         renderPass.setPipeline(pipelines.renderBeams);
         renderPass.setVertexBuffer(0, buffers.beams);
         renderPass.setBindGroup(0, bindGroups.renderBeams.group);
-        renderPass.setIndexBuffer(buffers.mapping, 'uint16', bufferMapper.maxParticles * Uint16Array.BYTES_PER_ELEMENT, bufferMapper.maxBeams *  Uint16Array.BYTES_PER_ELEMENT);
+        renderPass.setIndexBuffer(buffers.mapping, 'uint16', bufferMapper.maxParticles * Uint16Array.BYTES_PER_ELEMENT, bufferMapper.maxBeams * Uint16Array.BYTES_PER_ELEMENT);
         renderPass.drawIndexedIndirect(buffers.metadata, 20);
         renderPass.end();
         // submit
