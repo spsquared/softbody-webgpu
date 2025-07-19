@@ -172,7 +172,6 @@ fn compute_update(thread: ComputeParams) {
         particle.a += metadata.gravity;
         // drag
         if (length(particle.v) > 0) {
-            // particle.p.y += metadata.drag_exp * time_step;
             particle.a -= metadata.drag_coeff * pow(abs(particle.v), vec2<f32>(metadata.drag_exp, metadata.drag_exp)) * normalize(particle.v);
         }
         // user input forces
@@ -235,5 +234,9 @@ fn compute_delete(thread: ComputeParams) {
     if (thread.global_invocation_id.x == 0) {
         metadata.particle_i_c = atomicLoad(&delete_index[0]) + 1;
         metadata.beam_i_c = atomicLoad(&delete_index[1]) + 1 - metadata.max_particles;
+        let len = -(i32(metadata.max_particles + metadata.max_beams) / -2);
+        for (var i = 0; i < len; i++) {
+            delete_mappings[i] = 0;
+        }
     }
 }

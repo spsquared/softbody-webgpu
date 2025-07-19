@@ -1,3 +1,4 @@
+/// <reference types="vite/client" />
 /// <reference types="@webgpu/types" />
 
 import './assets/main.css';
@@ -219,11 +220,11 @@ function oofDefaultState(mapper: BufferMapper) {
     // CUBES
     addRectangle(185, 10, 60, 2, 2, 1, 50, 1, 2.5);
     addRectangle(35, 10, 60, 2, 2, 1, 50, 1, 2.5);
-    addRectangle(20, 120, 30, 9, 4, 50, 700, 0.8, 2);
+    addRectangle(20, 120, 30, 9, 4, 50, 700, 0, 0);
     bufferMapper.addParticle(new Particle(i++, new Vector2D(445, 10)));
     bufferMapper.addParticle(new Particle(i++, new Vector2D(925, 10)));
     addRectangle(400, 40, 30, 20, 2, 500, 800, 0.1, 0.5);
-    addRectangle(700, 400, 40, 5, 5, 2, 50, 1, 5);
+    addRectangle(700, 400, 40, 5, 5, 3, 50, 2, 5);
     // lol staircase
     // const qa = 500;
     // const qb = 500;

@@ -1,3 +1,4 @@
+/// <reference types="vite/client" />
 /// <reference types="@webgpu/types" />
 
 import { Vector2D } from "./engineMapping";

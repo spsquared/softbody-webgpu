@@ -1,3 +1,4 @@
+/// <reference types="vite/client" />
 /// <reference types="@webgpu/types" />
 
 import { WGPUSoftbodyEngineMessageTypes, WGPUSoftbodyEngineOptions } from './engine';
@@ -678,12 +679,12 @@ class WGPUSoftbodyEngineWorker {
         });
         renderPass.setPipeline(pipelines.renderParticles);
         renderPass.setVertexBuffer(0, buffers.particlesA);
-        renderPass.setIndexBuffer(buffers.mapping, 'uint16', 0, bufferMapper.maxParticles * 2);
+        renderPass.setIndexBuffer(buffers.mapping, 'uint16', 0, bufferMapper.maxParticles *  Uint16Array.BYTES_PER_ELEMENT);
         renderPass.drawIndexedIndirect(buffers.metadata, 0);
         renderPass.setPipeline(pipelines.renderBeams);
         renderPass.setVertexBuffer(0, buffers.beams);
         renderPass.setBindGroup(0, bindGroups.renderBeams.group);
-        renderPass.setIndexBuffer(buffers.mapping, 'uint16', bufferMapper.maxParticles * 2, bufferMapper.maxBeams * 2);
+        renderPass.setIndexBuffer(buffers.mapping, 'uint16', bufferMapper.maxParticles * Uint16Array.BYTES_PER_ELEMENT, bufferMapper.maxBeams *  Uint16Array.BYTES_PER_ELEMENT);
         renderPass.drawIndexedIndirect(buffers.metadata, 20);
         renderPass.end();
         // submit
