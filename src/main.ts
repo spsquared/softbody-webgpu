@@ -220,7 +220,7 @@ function oofDefaultState(mapper: BufferMapper) {
     // CUBES
     addRectangle(185, 10, 60, 2, 2, 1, 50, 1, 2.5);
     addRectangle(35, 10, 60, 2, 2, 1, 50, 1, 2.5);
-    addRectangle(20, 120, 30, 9, 4, 50, 700, 0, 0);
+    addRectangle(20, 120, 30, 9, 4, 50, 700, 0.2, 0.5);
     bufferMapper.addParticle(new Particle(i++, new Vector2D(445, 10)));
     bufferMapper.addParticle(new Particle(i++, new Vector2D(925, 10)));
     addRectangle(400, 40, 30, 20, 2, 500, 800, 0.1, 0.5);
