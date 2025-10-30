@@ -460,8 +460,11 @@ export class SoftbodyEditor {
                     if (b !== null) {
                         const particles = bufferMapper.particleSet;
                         for (const p of particles) {
-                            if (p.position.sub(b.position).magnitude <= this.action.autoTriangulate && p !== a && p !== b) {
-                                this.action.autoTriangulateParticles.add(p);
+                            if (p.position.sub(b.position).magnitude <= this.action.autoTriangulate) {
+                                if (!this.action.forceAddMode && this.action.hoverParticle !== null) {
+                                    // special case for snapping
+                                    if (p !== this.action.hoverParticle && p !== b) this.action.autoTriangulateParticles.add(p);
+                                } else if (p !== a && p !== b) this.action.autoTriangulateParticles.add(p);
                             }
                         }
                     }
