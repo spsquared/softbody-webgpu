@@ -278,11 +278,15 @@ export class SoftbodyEditor {
                 // apply settings
                 this.action.hoverBeam.spring = this.action.beamSettings.spring;
                 this.action.hoverBeam.damp = this.action.beamSettings.damp;
+                this.action.hoverBeam.yieldStrain = this.action.beamSettings.yieldStrain;
+                this.action.hoverBeam.strainLimit = this.action.beamSettings.strainLimit;
                 // apply to selection if possible
                 if (this.action.selectedBeams.has(this.action.hoverBeam)) {
                     for (const b of this.action.selectedBeams) {
                         b.spring = this.action.beamSettings.spring;
                         b.damp = this.action.beamSettings.damp;
+                        b.yieldStrain = this.action.beamSettings.yieldStrain;
+                        b.strainLimit = this.action.beamSettings.strainLimit;
                     }
                 }
             } else if (this.action.hoverParticle === null || this.action.forceAddMode) {
@@ -829,12 +833,12 @@ export class SoftbodyEditor {
                 modeText.push(`ADD FROM: ${this.vecString(this.action.hoverParticle.position)}`);
             } else if (this.action.hoverBeam !== null && !this.action.forceAddMode) {
                 const [a, b] = await this.getEndpoints(this.action.hoverBeam);
-                modeText.push(`HOVER: ${this.vecString(a)} → ${this.vecString(b)} (S=${this.action.hoverBeam.spring}, D=${this.action.hoverBeam.damp})`);
+                modeText.push(`HOVER: ${this.vecString(a)} → ${this.vecString(b)} (S=${this.action.hoverBeam.spring}, D=${this.action.hoverBeam.damp}, Y=${this.action.hoverBeam.yieldStrain}, B=${this.action.hoverBeam.strainLimit})`);
                 // apply settings to beam or delete
                 if (this.action.deleteMode) {
                     modeText.push('DELETE');
                 } else {
-                    modeText.push(`APPLY SETTINGS (S=${this.action.beamSettings.spring}, D=${this.action.beamSettings.damp})`);
+                    modeText.push(`APPLY SETTINGS (S=${this.action.beamSettings.spring}, D=${this.action.beamSettings.damp}, Y=${this.action.beamSettings.yieldStrain}, B=${this.action.beamSettings.strainLimit})`);
                     // apply to selection
                     if (this.action.selectedBeams.has(this.action.hoverBeam)) modeText.push('APPLY TO SELECTION');
                 }

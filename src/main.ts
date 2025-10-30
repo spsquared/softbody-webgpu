@@ -300,6 +300,8 @@ editModeToggle.addEventListener('click', () => {
 });
 createClampedInput(document.getElementById('beamSpring') as HTMLInputElement, 0, 2000, 0.1, (s) => editor.instance.beamSettings.spring = s ?? editor.instance.beamSettings.spring);
 createClampedInput(document.getElementById('beamDamp') as HTMLInputElement, 0, 2000, 0.1, (d) => editor.instance.beamSettings.damp = d ?? editor.instance.beamSettings.damp);
+createClampedInput(document.getElementById('yieldStrain') as HTMLInputElement, 0, 2000, 0.1, (d) => editor.instance.beamSettings.yieldStrain = d ?? editor.instance.beamSettings.yieldStrain);
+createClampedInput(document.getElementById('strainLimit') as HTMLInputElement, 0, 2000, 0.1, (d) => editor.instance.beamSettings.strainLimit = d ?? editor.instance.beamSettings.strainLimit);
 createClampedInput(document.getElementById('triangulationDistance') as HTMLInputElement, 0, 1000, 10, (d) => editor.instance.autoTriangulateDistance = d ?? editor.instance.autoTriangulateDistance);
 createClampedInput(document.getElementById('snapGridSize') as HTMLInputElement, 0, 100, 10, (d) => editor.instance.snapGridSize = d ?? editor.instance.snapGridSize);
 const editLoadButton = document.getElementById('editLoadButton') as HTMLInputElement;
