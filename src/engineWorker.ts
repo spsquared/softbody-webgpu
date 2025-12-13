@@ -1,6 +1,3 @@
-/// <reference types="vite/client" />
-/// <reference types="@webgpu/types" />
-
 import { WGPUSoftbodyEngineMessageTypes, WGPUSoftbodyEngineOptions } from './engine';
 import { Beam, BufferMapper, Particle, Vector2D } from './engineMapping';
 import { AsyncLock } from './lock';

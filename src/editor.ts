@@ -1,6 +1,3 @@
-/// <reference types="vite/client" />
-/// <reference types="@webgpu/types" />
-
 import { WGPUSoftbodyEngineOptions, WGPUSoftbodyEnginePhysicsConstants } from "./engine";
 import { Beam, BufferMapper, Particle, Vector2D } from "./engineMapping";
 

@@ -1,6 +1,3 @@
-/// <reference types="vite/client" />
-/// <reference types="@webgpu/types" />
-
 import './assets/main.css';
 
 import { SoftbodyEditor } from './editor';
