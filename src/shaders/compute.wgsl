@@ -71,7 +71,7 @@ const particle_force_scale: f32 = 65536;
 const beam_stress_scale: f32 = 1.0 / 20.0;
 // big bitmask
 @group(0) @binding(6)
-var<storage, read_write> delete_mappings: array<u32>;
+var<storage, read_write> delete_mappings: array<atomic<u32>>;
 var<workgroup> delete_index: array<atomic<u32>, 2>;
 
 // once again wgpu not having u16 is annoying
@@ -81,10 +81,10 @@ fn get_mapped_index(id: u32) -> u32 {
 }
 
 fn mark_particle_deleted(id: u32) {
-    delete_mappings[id / 32u] |= 1u << (id % 32);
+    atomicOr(&delete_mappings[id / 32u], 1u << (id % 32));
 }
 fn mark_beam_deleted(id: u32) {
-    delete_mappings[(metadata.max_particles + id) / 32u] |= 1u << ((metadata.max_particles + id) % 32);
+    atomicOr(&delete_mappings[(metadata.max_particles + id) / 32u], 1u << ((metadata.max_particles + id) % 32));
 }
 
 @compute @workgroup_size(64, 1, 1)
@@ -141,7 +141,7 @@ fn compute_update(thread: ComputeParams) {
         let const_particle = particle;
         // collide with other particles (naive solution)
         let elasticity_coeff = (metadata.elasticity + 1) / 2;
-        for (var o_map_index: u32 = 0; o_map_index < metadata.particle_i_c; o_map_index++) {
+        for (var o_map_index = 0u; o_map_index < metadata.particle_i_c; o_map_index++) {
             if (o_map_index == particle_mapping_index) {
                 continue;
             }
@@ -162,10 +162,10 @@ fn compute_update(thread: ComputeParams) {
                 particle.v -= impulse_normal * normal + impulse_tangent * tangent;
                 // offset thing from verlet integration style collisions
                 let clip_shift = normal * (particle_radius * 2 - dist) / 2;
-                // unfortunately these "static" forces can't be added to acceleration due to floating-point causing instability
-                particle.p -= clip_shift;
+                // these are all equivalent and apparently dividing by time step multiple times is stable now?
+                // particle.p -= clip_shift;
                 // particle.v -= clip_shift / time_step;
-                // particle.a -= clip_shift / time_step / time_step;
+                particle.a -= clip_shift / (time_step * time_step);
             }
         }
         // gravity
@@ -217,16 +217,18 @@ fn compute_delete(thread: ComputeParams) {
     }
     workgroupBarrier();
     // deleting involves moving things around in mapping, hence the existence of this separate pipeline
+    // what the fuck is this doing it doesnt work at all
     for (var particle_map = map_particle_start; particle_map < map_particle_end; particle_map++) {
-        if ((delete_mappings[particle_map / 32u] & (1u << (particle_map % 32u))) > 0) {
+        if ((atomicLoad(&delete_mappings[particle_map / 32u]) & (1u << (particle_map % 32u))) > 0) {
             let replace_map = atomicSub(&delete_index[0], 1);
             mappings[particle_map / 2] = insertBits(mappings[particle_map / 2], extractBits(mappings[replace_map / 2], (replace_map % 2) * 16, 16), (particle_map % 2) * 16, 16);
         }
     }
     for (var beam_map = map_beam_start; beam_map < map_beam_end; beam_map++) {
-        if ((delete_mappings[beam_map / 32u] & (1u << (beam_map % 32u))) > 0) {
+        if ((atomicLoad(&delete_mappings[beam_map / 32u]) & (1u << (beam_map % 32u))) > 0) {
             let replace_map = atomicSub(&delete_index[1], 1);
             mappings[beam_map / 2] = insertBits(mappings[beam_map / 2], extractBits(mappings[replace_map / 2], (replace_map % 2) * 16, 16), (beam_map % 2) * 16, 16);
+            mappings[beam_map / 2] = 0;
         }
     }
     workgroupBarrier();
@@ -234,9 +236,11 @@ fn compute_delete(thread: ComputeParams) {
     if (thread.global_invocation_id.x == 0) {
         metadata.particle_i_c = atomicLoad(&delete_index[0]) + 1;
         metadata.beam_i_c = atomicLoad(&delete_index[1]) + 1 - metadata.max_particles;
-        let len = -(i32(metadata.max_particles + metadata.max_beams) / -2);
-        for (var i = 0; i < len; i++) {
-            delete_mappings[i] = 0;
+        // bruh what was I on when I wrote this
+        // let len = -(i32(metadata.max_particles + metadata.max_beams) / -2);
+        let len = (metadata.max_particles + metadata.max_beams) / 2u;
+        for (var i = 0u; i < len; i++) {
+            atomicStore(&delete_mappings[i], 0);
         }
     }
 }

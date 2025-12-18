@@ -134,6 +134,7 @@ export class WGPUSoftbodyEngine {
         const offscreen = this.simCanvas.transferControlToOffscreen();
         offscreen.width = this.resolution;
         offscreen.height = this.resolution;
+        // why did i choose to make this a worker it just makes it more complicated and it doesnt need its own thread anyway its the gpu
         this.worker = new Worker(new URL('./engineWorker', import.meta.url), { type: 'module' });
         this.worker.addEventListener('error', (err) => { throw err.error ?? new Error(err.message ?? 'Error in engine worker'); });
         this.worker.addEventListener('message', (e) => this.onMessage(e));

@@ -182,6 +182,7 @@ class WGPUSoftbodyEngineWorker {
                 visibility: GPUShaderStage.COMPUTE,
                 buffer: { type: type ?? 'storage' }
             });
+            // probably should have just made three bind groups and alternated two of them
             const computeBindGroupLayout = device.createBindGroupLayout({
                 entries: [
                     computeLayoutEntry(0),
@@ -648,19 +649,14 @@ class WGPUSoftbodyEngineWorker {
             label: import.meta.env.DEV ? 'Engine compute pass' : undefined
         });
         computePass.setPipeline(pipelines.computeUpdate);
-        // using this will break if new particles/beams are added by the compute shader
-        // const numWorkgroups = Math.ceil(Math.max(bufferMapper.meta.particleCount, bufferMapper.meta.beamCount) / this.workgroupSize);
-        const numWorkgroups = Math.ceil(Math.max(bufferMapper.maxParticles, bufferMapper.maxBeams) / this.workgroupSize);
+        // need to upgrade to using indirect buffer if particles/beams ever get added in the shader
+        const numWorkgroups = Math.ceil(Math.max(bufferMapper.meta.particleCount, bufferMapper.meta.beamCount) / this.workgroupSize);
+        // const numWorkgroups = Math.ceil(Math.max(bufferMapper.maxParticles, bufferMapper.maxBeams) / this.workgroupSize);
         for (let i = 0; i < this.subticks; i++) {
             // alternating bind groups - read from one buffer and write to the other (fixes collision asymmetry)
             if (i % 2 == 0) computePass.setBindGroup(0, bindGroups.computeA.group);
             else computePass.setBindGroup(0, bindGroups.computeB.group);
-            // computePass.dispatchWorkgroupsIndirect()
-            // computePass.dispatchWorkgroupsIndirect()
-            // computePass.dispatchWorkgroupsIndirect()
-            // computePass.dispatchWorkgroupsIndirect()
-            // computePass.dispatchWorkgroupsIndirect()
-            // computePass.dispatchWorkgroupsIndirect()
+            // dispatchWorkgroupsIndirect 
             computePass.dispatchWorkgroups(numWorkgroups, 1, 1);
         }
         // anything that should be deleted is deleted afterward to avoid shuffling around in other threads' data
